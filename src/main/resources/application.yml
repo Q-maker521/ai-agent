@@ -1,0 +1,64 @@
+spring:
+  application:
+    name: ai-agent
+  profiles:
+    active: local
+#  datasource:
+#    url: xxx
+#    username: root
+#    password: 123456
+  ai:
+    dashscope:
+      # 需要替换为你自己的 key
+      api-key: ${DASHSCOPE_API_KEY:}
+      chat:
+        options:
+          model: qwen-max
+    openai:
+      # 前端用户自行填写 — 此处仅供自动配置不会异常
+      api-key: ${OPENAI_API_KEY:dummy}
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:dummy}
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        model: gemma3:1b
+    mcp:
+       client:
+#         sse:
+#            connections:
+#              server1:
+#                url: http://localhost:8127
+         stdio:
+           servers-configuration: classpath:mcp-servers.json
+    vectorstore:
+      pgvector:
+        index-type: HNSW
+        dimensions: 1536
+        distance-type: COSINE_DISTANCE
+        max-document-batch-size: 10000 # Optional: Maximum number of documents per batch
+server:
+  port: 8123
+  servlet:
+    context-path: /api
+# springdoc-openapi config
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  group-configs:
+    - group: 'default'
+      paths-to-match: '/**'
+      packages-to-scan: com.aiagent.controller
+# knife4j config
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+# 修改日志级别，查看 Spring AI 更多调用细节
+logging:
+  level:
+    org.springframework.ai: DEBUG

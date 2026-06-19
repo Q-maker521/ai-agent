@@ -1,0 +1,88 @@
+import axios from 'axios'
+
+// 根据环境变量设置 API 基础 URL
+const API_BASE_URL = process.env.NODE_ENV === 'production'
+ ? '/api' // 生产环境使用相对路径，适用于前后端部署在同一域名下
+ : 'http://localhost:8123/api' // 开发环境指向本地后端服务
+
+// 创建axios实例
+const request = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 60000
+})
+
+// 封装SSE连接
+export const connectSSE = (url, params, onMessage, onError) => {
+  // 构建带参数的URL
+  const queryString = Object.keys(params)
+    .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
+    .join('&')
+
+  const fullUrl = `${API_BASE_URL}${url}?${queryString}`
+
+  // 创建EventSource
+  const eventSource = new EventSource(fullUrl)
+
+  eventSource.onmessage = event => {
+    let data = event.data
+
+    // 检查是否是特殊标记
+    if (data === '[DONE]') {
+      if (onMessage) onMessage('[DONE]')
+    } else {
+      // 处理普通消息
+      if (onMessage) onMessage(data)
+    }
+  }
+
+  eventSource.onerror = error => {
+    if (onError) onError(error)
+    eventSource.close()
+  }
+
+  // 返回eventSource实例，以便后续可以关闭连接
+  return eventSource
+}
+
+// AI 知识库问答聊天
+export const chatWithRag = (message, chatId) => {
+  return connectSSE('/ai/rag/chat/sse', { message, chatId })
+}
+
+// AI 智能研发助手聊天（支持 sessionId 会话复用）
+export const chatWithAgent = (message, sessionId) => {
+  const params = { message }
+  if (sessionId) params.sessionId = sessionId
+  return connectSSE('/ai/agent/chat', params)
+}
+
+// AI 智能研发助手结构化流（思考链可视化）
+export const chatWithAgentStream = (message, sessionId) => {
+  const params = { message }
+  if (sessionId) params.sessionId = sessionId
+  return connectSSE('/ai/agent/chat/stream', params)
+}
+
+// 保存用户模型配置（多 Provider）
+export const saveConfig = async (provider, apiKey, modelName, baseUrl, sessionId) => {
+  const body = { provider, apiKey, modelName }
+  if (baseUrl) body.baseUrl = baseUrl
+  if (sessionId) body.sessionId = sessionId
+  const res = await request.post('/ai/config', body)
+  return res.data
+}
+
+// 获取当前配置状态
+export const getConfig = async (sessionId) => {
+  const params = sessionId ? { sessionId } : {}
+  const res = await request.get('/ai/config', { params })
+  return res.data
+}
+
+export default {
+  chatWithRag,
+  chatWithAgent,
+  chatWithAgentStream,
+  saveConfig,
+  getConfig
+}
