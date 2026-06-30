@@ -48,6 +48,10 @@ public class ToolCallAgent extends ReActAgent {
     // 当 terminate 被调用时，它就是 Agent 的最终回复
     private String lastThinkingText;
 
+    // 工具结果最大长度（字符），超过此长度会被截断。
+    // 防止单步工具返回（如网页抓取）撑爆 LLM 上下文窗口。
+    private static final int MAX_TOOL_RESULT_LENGTH = 2_000;
+
     // 当前步的重试计数
     private int retryCount = 0;
     private static final int MAX_RETRIES = 3;
@@ -159,14 +163,13 @@ public class ToolCallAgent extends ReActAgent {
             // 执行工具调用并追加结果到消息列表
             Prompt prompt = new Prompt(getMessageList(), this.chatOptions);
             ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, toolCallChatResponse);
-            // 取返回结果中的 ToolResponseMessage 追加到消息列表
+            // 取返回结果中的 ToolResponseMessage
             List<Message> updatedHistory = toolExecutionResult.conversationHistory();
             ToolResponseMessage toolResponseMessage = null;
             if (CollUtil.isNotEmpty(updatedHistory)) {
                 for (int i = updatedHistory.size() - 1; i >= 0; i--) {
                     if (updatedHistory.get(i) instanceof ToolResponseMessage trm) {
                         toolResponseMessage = trm;
-                        getMessageList().add(trm);
                         break;
                     }
                 }
@@ -182,11 +185,28 @@ public class ToolCallAgent extends ReActAgent {
                 setState(AgentState.FINISHED);
             }
 
-            // 发射 tool_result 事件
-            String results = toolResponseMessage.getResponses().stream()
+            // 截断过长的工具返回结果，防止撑爆 LLM 上下文窗口
+            // 替换原始 ToolResponseMessage 为截断后的版本再加入消息列表
+            List<ToolResponseMessage.ToolResponse> truncatedResponses =
+                    toolResponseMessage.getResponses().stream()
+                            .map(r -> {
+                                String raw = r.responseData();
+                                String truncated = truncateToolOutput(raw);
+                                return new ToolResponseMessage.ToolResponse(
+                                        r.id(), r.name(), truncated);
+                            })
+                            .toList();
+            ToolResponseMessage truncatedMessage =
+                    new ToolResponseMessage(truncatedResponses,
+                            toolResponseMessage.getMetadata());
+            getMessageList().add(truncatedMessage);
+
+            // 发射 tool_result 事件（使用截断后的输出）
+            String results = truncatedResponses.stream()
                     .map(response -> {
                         String output = response.responseData();
-                        emitEvent(AgentEvent.toolResult(getCurrentStep(), response.name(), output));
+                        emitEvent(AgentEvent.toolResult(getCurrentStep(),
+                                response.name(), output));
                         return "工具 " + response.name() + " 返回结果: " + output;
                     })
                     .collect(Collectors.joining("\n"));
@@ -197,6 +217,23 @@ public class ToolCallAgent extends ReActAgent {
             emitEvent(AgentEvent.agentError(getCurrentStep(), "Tool execution failed: " + e.getMessage()));
             return "工具执行失败：" + e.getMessage();
         }
+    }
+
+    /**
+     * 截断过长的工具输出，防止单步结果撑爆 LLM 上下文窗口。
+     * <p>
+     * 截断后在末尾追加标记，告知 LLM 内容被截断，LLM 可以
+     * 根据截断信息决定是否需要更精确的查询来获取完整内容。
+     */
+    private String truncateToolOutput(String output) {
+        if (output == null || output.length() <= MAX_TOOL_RESULT_LENGTH) {
+            return output;
+        }
+        int originalLength = output.length();
+        String truncated = output.substring(0, MAX_TOOL_RESULT_LENGTH);
+        return truncated + "\n\n[... 输出已截断，原始长度: "
+                + originalLength + " 字符，当前保留前 "
+                + MAX_TOOL_RESULT_LENGTH + " 字符]";
     }
 
     /**
