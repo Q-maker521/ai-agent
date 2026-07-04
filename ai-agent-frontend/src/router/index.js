@@ -6,8 +6,8 @@ const routes = [
     name: 'Home',
     component: () => import('../views/Home.vue'),
     meta: {
-      title: '首页 - AI 智能研发助手平台',
-      description: 'AI 智能研发助手平台提供 AI 知识库问答和 AI 智能研发助手服务，满足您的各种 AI 对话需求'
+      title: '首页 - AI Agent 平台',
+      description: '基于 ReAct 模式的自主规划 AI Agent 平台，支持多工具编排、RAG 知识检索与思考链实时可视化'
     }
   },
   {
@@ -15,7 +15,7 @@ const routes = [
     name: 'KnowledgeRag',
     component: () => import('../views/KnowledgeRag.vue'),
     meta: {
-      title: 'AI 知识库问答 - AI 智能研发助手平台',
+      title: 'AI 知识库问答 - AI Agent 平台',
       description: 'AI 知识库问答基于 RAG 检索增强生成技术，能够基于知识库文档智能回答您的问题'
     }
   },
@@ -24,7 +24,7 @@ const routes = [
     name: 'AgentChat',
     component: () => import('../views/AgentChat.vue'),
     meta: {
-      title: 'AI 智能研发助手 - AI 智能研发助手平台',
+      title: 'AI 智能研发助手 - AI Agent 平台',
       description: 'AI 智能研发助手是一个具备自主规划能力的 AI Agent，能够使用多种工具完成复杂任务'
     }
   },
@@ -33,7 +33,7 @@ const routes = [
     name: 'Settings',
     component: () => import('../views/Settings.vue'),
     meta: {
-      title: '设置 - AI 智能研发助手平台',
+      title: '设置 - AI Agent 平台',
       description: '配置 API Key 和模型参数，自定义 AI 智能研发助手的行为'
     }
   }

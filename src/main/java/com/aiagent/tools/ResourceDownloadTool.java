@@ -21,7 +21,20 @@ public class ResourceDownloadTool {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
-    @Tool(description = "Download a resource from a given URL")
+    @Tool(description = """
+            Download a file from a given URL and save it to the local filesystem.
+
+            WHEN TO USE: When the user asks to download a file, image, document, or
+            other resource from a specific URL. Also useful for saving search results
+            or generated content from external services.
+
+            DIFFERS FROM web_scrape: web_scrape extracts and returns text content from
+            a web page. download_resource saves the raw file (any format) to disk. Use
+            web_scrape to READ content, use download_resource to SAVE files.
+
+            LIMITATIONS: HTTP/HTTPS only. 30-second timeout. Follows redirects.
+            Returns a success message with the file path, or an error on failure.
+            """)
     public String downloadResource(
             @ToolParam(description = "URL of the resource to download") String url,
             @ToolParam(description = "Name of the file to save the downloaded resource") String fileName) {

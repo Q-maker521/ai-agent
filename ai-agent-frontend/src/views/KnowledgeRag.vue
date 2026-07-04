@@ -27,7 +27,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHead } from '@vueuse/head'
 import ChatRoom from '../components/ChatRoom.vue'
-import { chatWithRag } from '../api'
+import { chatWithRag, getRagDocuments } from '../api'
 
 useHead({
   title: 'RAG 知识库问答 — 检索增强生成',
@@ -41,6 +41,7 @@ const router = useRouter()
 const messages = ref([])
 const chatId = ref('')
 const connectionStatus = ref('disconnected')
+const documents = ref([])
 let eventSource = null
 
 const addMessage = (content, isUser) => messages.value.push({ content, isUser, time: Date.now() })
@@ -51,7 +52,8 @@ const sendMessage = (message) => {
   const idx = messages.value.length
   addMessage('', false)
   connectionStatus.value = 'connecting'
-  eventSource = chatWithRag(message, chatId.value)
+  const sessionId = localStorage.getItem('aiagent_session_id') || ''
+  eventSource = chatWithRag(message, chatId.value, sessionId)
   eventSource.onmessage = (event) => {
     const data = event.data
     if (data && data !== '[DONE]' && idx < messages.value.length) messages.value[idx].content += data
@@ -62,9 +64,24 @@ const sendMessage = (message) => {
 
 const goBack = () => router.push('/')
 
-onMounted(() => {
+onMounted(async () => {
   chatId.value = 'rag_' + Math.random().toString(36).substring(2, 8)
-  addMessage('你好，我是 AI 知识库助手。请提出你的问题，我将基于知识库文档为你提供答案。', false)
+  // 加载文档目录
+  try {
+    documents.value = await getRagDocuments()
+  } catch (e) {
+    console.warn('Failed to load document catalog:', e)
+  }
+  let welcome = '你好，我是 AI 知识库助手。请提出你的问题，我将基于知识库文档为你提供答案。'
+  if (documents.value.length > 0) {
+    welcome += '\n\n📚 当前知识库包含以下文档：'
+    for (const doc of documents.value) {
+      const name = (doc.filename || '').replace('.md', '')
+      welcome += '\n  • ' + name
+      if (doc.summary) welcome += ' — ' + doc.summary
+    }
+  }
+  addMessage(welcome, false)
 })
 
 onBeforeUnmount(() => { if (eventSource) eventSource.close() })

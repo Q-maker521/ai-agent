@@ -1,3 +1,9 @@
+---
+category: react-pattern
+tags: [ReAct, Tool Calling, Function Calling, Agent Loop, 思考链]
+summary: ReAct 推理-行动循环模式详解，包含代码实现与工具设计原则
+---
+
 # ReAct 模式与工具调用
 
 ## 什么是 ReAct 模式

@@ -33,7 +33,17 @@ public class LoggingAdvisor implements CallAdvisor, StreamAdvisor {
 	}
 
 	private void observeAfter(ChatClientResponse chatClientResponse) {
-		log.info("AI Response: {}", chatClientResponse.chatResponse().getResult().getOutput().getText());
+		try {
+			var response = chatClientResponse.chatResponse();
+			if (response != null && response.getResult() != null) {
+				var output = response.getResult().getOutput();
+				if (output != null && output.getText() != null) {
+					log.info("AI Response: {}", output.getText());
+				}
+			}
+		} catch (Exception e) {
+			log.debug("Failed to log AI response: {}", e.getMessage());
+		}
 	}
 
 	@Override

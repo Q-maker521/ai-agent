@@ -1,6 +1,7 @@
 package com.aiagent.agent;
 
 import cn.hutool.core.util.StrUtil;
+import com.aiagent.agent.model.AgentState;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +44,13 @@ public abstract class ReActAgent extends BaseAgent {
             // 先思考
             boolean shouldAct = think();
             if (!shouldAct) {
+                // 自动终止时（连续无工具调用），不返回过期文本。
+                // think() 已将状态设为 FINISHED，getLastAssistantText()
+                // 会跳过当前步的空消息找到上一步的文本，导致 step_end
+                // 携带重复内容，最终前端 finalResponse 出现重复回复。
+                if (getState() == AgentState.FINISHED) {
+                    return null;
+                }
                 // 不需要工具调用时，返回 LLM 的实际文本响应而非占位符
                 String llmResponse = getLastAssistantText();
                 if (StrUtil.isNotBlank(llmResponse)) {
@@ -53,8 +61,7 @@ public abstract class ReActAgent extends BaseAgent {
             // 再行动
             return act();
         } catch (Exception e) {
-            // 记录异常日志
-            e.printStackTrace();
+            log.error("步骤执行失败", e);
             return "步骤执行失败：" + e.getMessage();
         }
     }

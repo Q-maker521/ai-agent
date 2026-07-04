@@ -13,27 +13,40 @@ import org.springframework.stereotype.Component;
 @Component
 public class QueryRewriter {
 
-    private final QueryTransformer queryTransformer;
+    private final QueryTransformer defaultQueryTransformer;
+    private final ChatClient.Builder defaultChatClientBuilder;
 
     public QueryRewriter(ChatModel dashscopeChatModel) {
-        ChatClient.Builder builder = ChatClient.builder(dashscopeChatModel);
-        // 创建查询重写转换器
-        queryTransformer = RewriteQueryTransformer.builder()
-                .chatClientBuilder(builder)
+        this.defaultChatClientBuilder = ChatClient.builder(dashscopeChatModel);
+        this.defaultQueryTransformer = RewriteQueryTransformer.builder()
+                .chatClientBuilder(defaultChatClientBuilder)
                 .build();
     }
 
     /**
-     * 执行查询重写
-     *
-     * @param prompt
-     * @return
+     * 使用默认 ChatModel（DashScope）执行查询重写。
      */
     public String doQueryRewrite(String prompt) {
+        return doQueryRewrite(prompt, null);
+    }
+
+    /**
+     * 使用自定义 ChatModel 执行查询重写。
+     *
+     * @param prompt    用户原始提问
+     * @param chatModel 自定义模型（null 则使用默认 DashScope）
+     */
+    public String doQueryRewrite(String prompt, ChatModel chatModel) {
+        QueryTransformer transformer;
+        if (chatModel != null) {
+            transformer = RewriteQueryTransformer.builder()
+                    .chatClientBuilder(ChatClient.builder(chatModel))
+                    .build();
+        } else {
+            transformer = this.defaultQueryTransformer;
+        }
         Query query = new Query(prompt);
-        // 执行查询重写
-        Query transformedQuery = queryTransformer.transform(query);
-        // 输出重写后的查询
+        Query transformedQuery = transformer.transform(query);
         return transformedQuery.text();
     }
 }

@@ -1,82 +1,123 @@
 package com.aiagent.tools;
 
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
+import com.aiagent.tools.search.BingSearchEngine;
+import com.aiagent.tools.search.DuckDuckGoSearchEngine;
+import com.aiagent.tools.search.SearchAggregator;
+import com.aiagent.tools.search.SearchResult;
+import com.aiagent.tools.search.TavilySearchEngine;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 网页搜索工具 — 基于 Bing 搜索引擎，无需 API Key。
+ * 网页搜索工具 — 多引擎聚合搜索。
  *
- * <p>通过抓取 Bing 搜索结果页来获取摘要信息，
- * 返回前 5 条结果的标题、摘要和 URL。
- * Bing 在国内可直接访问，中英文搜索效果均好。
+ * <p><b>引擎优先级</b>：
+ * <ol>
+ *   <li>Tavily Search API（最精准，专为 AI Agent 设计）</li>
+ *   <li>Bing HTML 抓取（免费 fallback）</li>
+ *   <li>DuckDuckGo HTML 抓取（免费，国内可能不可用）</li>
+ * </ol>
+ *
+ * <p>并发查询 → 去重 → 质量评分 → 排序返回 Top 6。
  */
 public class WebSearchTool {
 
-    private static final String SEARCH_URL = "https://www.bing.com/search";
-    private static final int TIMEOUT_MS = 10_000;
-    private static final int MAX_RESULTS = 5;
+    private static final int MAX_RESULTS = 6;
 
-    private static final String USER_AGENT =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+    private final SearchAggregator aggregator;
 
-    @Tool(description = "Search the web for information using Bing. Returns title, URL, and snippet for each result.")
+    /**
+     * 创建搜索工具实例。
+     *
+     * @param tavilyApiKey Tavily Search API key（可为 null，此时仅使用 HTML 抓取）
+     */
+    public WebSearchTool(String tavilyApiKey) {
+        List<com.aiagent.tools.search.SearchEngine> engines = new ArrayList<>();
+
+        // ① 优先：Tavily API（专为 AI Agent 设计，返回 LLM 优化的正文摘要）
+        if (tavilyApiKey != null && !tavilyApiKey.isBlank()) {
+            engines.add(new TavilySearchEngine(tavilyApiKey));
+        }
+
+        // ② Fallback：Bing HTML 抓取（免费，但精度受反爬影响）
+        engines.add(new BingSearchEngine());
+
+        // ③ 补充：DuckDuckGo HTML 抓取（国内大概率不可用，但不影响）
+        engines.add(new DuckDuckGoSearchEngine());
+
+        this.aggregator = new SearchAggregator(engines);
+    }
+
+    /** 无参构造器（仅 HTML 抓取，兼容旧代码） */
+    public WebSearchTool() {
+        this(null);
+    }
+
+    @Tool(description = """
+            Search the web using multiple search engines (Tavily + Bing + DuckDuckGo).
+            Results are deduplicated, quality-scored, and ranked. Returns top 6 results with
+            title, URL, snippet, source engine, and quality score (0-100).
+
+            WHEN TO USE: For real-time news, current events, or specific facts beyond your
+            knowledge cutoff. Use ONLY when you genuinely need external information.
+
+            WHEN NOT TO USE: For general knowledge, concepts, explanations, or anything you
+            already know from your training data. Do NOT use for definitions or overviews.
+
+            STOP CONDITION: After 3 searches with poor or irrelevant results, abandon search
+            and use your own knowledge instead. State "基于我的知识..." in your response.
+
+            QUERY TIPS: Use short, specific keywords (e.g., "AI breakthroughs 2026"), not long
+            natural-language questions. Include the target language's keywords for better results.
+
+            RESULT QUALITY: Results sourced from "bing-api" have the highest quality (official API
+            ranking). Results with score ≥ 70 are generally reliable.
+            """)
     public String searchWeb(
-            @ToolParam(description = "Search query keyword") String query) {
+            @ToolParam(description = "Short keyword query (e.g., 'AI news 2026', not 'can you tell me about AI')") String query) {
+
+        if (query == null || query.isBlank()) {
+            return "⚠️ Empty search query. Please provide specific keywords.";
+        }
+
         try {
-            Document doc = Jsoup.connect(SEARCH_URL)
-                    .userAgent(USER_AGENT)
-                    .timeout(TIMEOUT_MS)
-                    .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-                    .data("q", query)
-                    .data("count", String.valueOf(MAX_RESULTS))
-                    .get();
-
-            Elements resultBlocks = doc.select("li.b_algo");
-            List<Map<String, String>> results = new ArrayList<>();
-
-            for (Element block : resultBlocks) {
-                if (results.size() >= MAX_RESULTS) break;
-
-                // 提取标题和 URL（h2 标签下的第一个 a 标签）
-                Element titleLink = block.selectFirst("h2 a");
-                if (titleLink == null) continue;
-
-                String title = titleLink.text().trim();
-                String url = titleLink.attr("href");
-
-                // 提取摘要
-                Element snippet = block.selectFirst("div.b_caption p");
-                String snippetText = snippet != null ? snippet.text().trim() : "";
-
-                if (title.isEmpty()) continue;
-
-                Map<String, String> item = new LinkedHashMap<>();
-                item.put("title", title);
-                item.put("url", url);
-                item.put("snippet", snippetText);
-                results.add(item);
-            }
+            List<SearchResult> results = aggregator.search(query.trim());
 
             if (results.isEmpty()) {
-                return "No search results found for query: \"" + query + "\"";
+                return "⚠️ No results from any search engine for \"" + query + "\". "
+                    + "SUGGESTION: Use your own knowledge if the topic is general, "
+                    + "or try completely different keywords (e.g., broader terms, "
+                    + "different language).";
             }
 
-            return results.stream()
-                    .map(r -> "Title: " + r.get("title") +
-                              "\nURL: " + r.get("url") +
-                              "\nSnippet: " + r.get("snippet"))
+            // 格式化为 LLM 可读的结果
+            String output = results.stream()
+                    .map(r -> String.format(
+                            "[Score: %d] %s\n  URL: %s\n  Source: %s\n  %s",
+                            r.qualityScore(), r.title(), r.url(),
+                            r.engine(), r.snippet()))
                     .collect(Collectors.joining("\n\n"));
+
+            // 质量警告
+            boolean allLowQuality = results.stream()
+                    .allMatch(r -> r.qualityScore() < 40);
+            if (allLowQuality) {
+                output += "\n\n⚠️ NOTE: All results have low quality scores. "
+                    + "If this doesn't help, STOP searching and use your own knowledge instead.";
+            }
+
+            // 统计信息
+            long apiResults = results.stream()
+                    .filter(r -> "tavily".equals(r.engine())).count();
+            output += "\n\n[" + results.size() + " unique results after deduplication"
+                    + (apiResults > 0 ? ", " + apiResults + " from Tavily API" : "")
+                    + "]";
+
+            return output;
 
         } catch (Exception e) {
             return "Error searching web: " + e.getMessage()

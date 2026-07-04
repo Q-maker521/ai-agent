@@ -1,3 +1,9 @@
+---
+category: agent-basics
+tags: [AI Agent, LLM, Memory, Tools, Planning, Spring AI]
+summary: AI Agent 基础概念、核心组件（LLM/Memory/Tools/Planning）与架构模式介绍
+---
+
 # AI Agent 基础概念与架构
 
 ## 什么是 AI Agent

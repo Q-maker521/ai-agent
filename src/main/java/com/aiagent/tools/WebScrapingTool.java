@@ -1,5 +1,6 @@
 package com.aiagent.tools;
 
+import com.aiagent.tools.utils.ContentExtractor;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -9,11 +10,14 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import java.io.IOException;
 
 /**
- * 网页抓取工具 — 基于 Jsoup 获取网页完整 HTML 内容。
+ * 网页抓取工具 — 基于 Jsoup 获取网页内容，并用正文提取算法去除噪音。
  *
- * <p>模拟浏览器请求头以避免被目标网站拒绝，设置超时和自动重定向。
- * 对于 JS 动态渲染的现代网站，返回 HTML 源码可能包含较少可读文本，
- * 此时建议配合 web_search 工具使用。
+ * <p>与旧版的区别：使用 {@link ContentExtractor} 智能提取正文，
+ * 而非简单的 {@code body.text()}。导航栏、广告、侧边栏等噪音内容
+ * 被自动过滤，确保返回内容中正文占比最大化。
+ *
+ * <p>对于 JS 动态渲染的现代网站（SPA），返回内容可能仍然较少，
+ * 此时建议配合 web_search 查找替代来源。
  */
 public class WebScrapingTool {
 
@@ -21,12 +25,29 @@ public class WebScrapingTool {
     private static final int MAX_BODY_LENGTH = 8_000;
 
     private static final String USER_AGENT =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            + "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
-    @Tool(description = "Scrape the content of a web page and return its HTML body text")
+    @Tool(description = """
+            Scrape and extract the MAIN CONTENT from a specific web page URL. Uses an
+            intelligent content extraction algorithm to remove navigation, ads, sidebars,
+            and other noise — keeping only the article body text.
+
+            Returns clean text up to 8000 characters with noise filtered out.
+
+            WHEN TO USE: After web_search has found a promising URL and you need the full
+            article content. Call ONLY when you have a specific URL from search results.
+
+            LIMITATIONS: JavaScript-heavy sites may return little or no content. If scraping
+            fails (403, 404, timeout), try a different URL from search results — do NOT
+            re-scrape the same URL repeatedly.
+
+            TIP: The extraction algorithm auto-detects the main content area (prioritizing
+            <article>, <main> tags, then text-density scoring), so you don't need to worry
+            about whether the URL is a blog, news site, or documentation page.
+            """)
     public String scrapeWebPage(
-            @ToolParam(description = "URL of the web page to scrape") String url) {
+            @ToolParam(description = "Full URL of the web page to scrape") String url) {
         try {
             Connection connection = Jsoup.connect(url)
                     .userAgent(USER_AGENT)
@@ -38,24 +59,16 @@ public class WebScrapingTool {
 
             Document document = connection.get();
 
-            // 提取 body 文本用于减少噪音，保留 HTML 结构以便 LLM 解析
-            String bodyText = document.body() != null
-                    ? document.body().text()
-                    : document.text();
+            // ★ 使用正文提取算法替代 body.text()
+            String content = ContentExtractor.extract(document, MAX_BODY_LENGTH);
 
-            if (bodyText.isBlank()) {
-                return "The page at " + url + " returned no visible text content. "
-                        + "This might be a JavaScript-rendered site. Try a different URL or use web_search to find alternative sources.";
+            if (content.isBlank()) {
+                return "The page at " + url + " returned no visible text content after "
+                        + "content extraction. This might be a JavaScript-rendered site. "
+                        + "Try a different URL or use web_search to find alternative sources.";
             }
 
-            // 截断过长内容，避免撑爆 LLM 上下文
-            if (bodyText.length() > MAX_BODY_LENGTH) {
-                bodyText = bodyText.substring(0, MAX_BODY_LENGTH)
-                        + "\n\n[... content truncated, total length: "
-                        + bodyText.length() + " characters]";
-            }
-
-            return bodyText;
+            return content;
 
         } catch (IOException e) {
             String msg = e.getMessage();

@@ -13,12 +13,16 @@ spring:
       api-key: ${DASHSCOPE_API_KEY:}
       chat:
         options:
-          model: qwen-max
+          model: qwen-plus-2025-07-28
     openai:
       # 前端用户自行填写 — 此处仅供自动配置不会异常
       api-key: ${OPENAI_API_KEY:dummy}
     anthropic:
       api-key: ${ANTHROPIC_API_KEY:dummy}
+    tavily:
+      # Tavily Search API — 专为 AI Agent 设计，邮箱注册即用
+      # 获取 key: https://tavily.com → 注册 → 免费 1000 次/月
+      api-key: ${TAVILY_API_KEY:}
     ollama:
       base-url: http://localhost:11434
       chat:

@@ -10,6 +10,7 @@ import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.anthropic.api.AnthropicApi;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
@@ -52,6 +53,55 @@ public class DynamicChatModelFactory {
             case ModelConfig.PROVIDER_ANTHROPIC -> createAnthropic(config);
             case ModelConfig.PROVIDER_OPENAI_COMPATIBLE -> createOpenAiCompatible(config);
             default -> createDashScope(config);
+        };
+    }
+
+    /**
+     * 根据用户配置仅创建 ChatModel（不含 ChatClient 包装），供 RAG 等模块使用。
+     *
+     * @return ChatModel，配置无效时返回 null
+     */
+    public ChatModel createChatModel(ModelConfig config) {
+        if (config == null || !config.isValid()) {
+            return null;
+        }
+        String provider = config.effectiveProvider();
+        log.info("Creating dynamic ChatModel: provider={}, model={}", provider, config.modelName());
+
+        return switch (provider) {
+            case ModelConfig.PROVIDER_OPENAI -> {
+                OpenAiApi api = OpenAiApi.builder().apiKey(config.apiKey()).build();
+                yield OpenAiChatModel.builder()
+                        .openAiApi(api)
+                        .defaultOptions(OpenAiChatOptions.builder().model(config.modelName()).build())
+                        .build();
+            }
+            case ModelConfig.PROVIDER_ANTHROPIC -> {
+                AnthropicApi api = AnthropicApi.builder().apiKey(config.apiKey()).build();
+                yield AnthropicChatModel.builder()
+                        .anthropicApi(api)
+                        .defaultOptions(AnthropicChatOptions.builder().model(config.modelName()).build())
+                        .build();
+            }
+            case ModelConfig.PROVIDER_OPENAI_COMPATIBLE -> {
+                String baseUrl = config.baseUrl() != null && !config.baseUrl().isBlank()
+                        ? config.baseUrl() : "https://api.openai.com";
+                OpenAiApi api = OpenAiApi.builder().apiKey(config.apiKey()).baseUrl(baseUrl).build();
+                yield OpenAiChatModel.builder()
+                        .openAiApi(api)
+                        .defaultOptions(OpenAiChatOptions.builder().model(config.modelName()).build())
+                        .build();
+            }
+            default -> {
+                DashScopeApi api = DashScopeApi.builder().apiKey(config.apiKey()).build();
+                yield DashScopeChatModel.builder()
+                        .dashScopeApi(api)
+                        .defaultOptions(DashScopeChatOptions.builder()
+                                .withModel(config.modelName())
+                                .withInternalToolExecutionEnabled(false)
+                                .build())
+                        .build();
+            }
         };
     }
 

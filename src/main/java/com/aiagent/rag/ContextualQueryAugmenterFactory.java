@@ -10,9 +10,10 @@ public class ContextualQueryAugmenterFactory {
 
     public static ContextualQueryAugmenter createInstance() {
         PromptTemplate emptyContextPromptTemplate = new PromptTemplate("""
-                你应该输出下面的内容：
-                抱歉，我只能回答知识库内已有的问题，其他问题暂时无法帮到您，
-                有问题可以联系编程导航客服 https://codefather.cn
+                知识库中未找到与您问题相关的文档。请尝试：
+                1. 换一种方式描述您的问题
+                2. 使用更具体的关键词
+                3. 切换到 Agent 模式获取更广泛的信息检索帮助
                 """);
         return ContextualQueryAugmenter.builder()
                 .allowEmptyContext(false)

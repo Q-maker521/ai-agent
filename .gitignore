@@ -1,10 +1,15 @@
 ### CUSTOM ###
+# 环境变量（含 API Key，不上传）
+.env
 # 个人学习笔记（不上传）
 面试模拟记录*.md
 项目优化清单*.md
 application-local.yml
 tmp
 .claude/
+# 工作文档（本地开发记录）
+WORKING_DOC.md
+项目问题回顾与解决方案.md
 
 HELP.md
 target/

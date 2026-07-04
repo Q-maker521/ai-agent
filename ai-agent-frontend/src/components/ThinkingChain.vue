@@ -27,7 +27,16 @@
             <div class="event-icon">💭</div>
             <div class="event-content">
               <div class="event-label">思考</div>
-              <div class="event-text">{{ step.thinking }}</div>
+              <div class="event-text">
+                <template v-if="step.thinkingTruncated && !step.thinkingExpanded">
+                  {{ step.thinking.substring(0, 500) }}...
+                  <span class="expand-hint" @click="step.thinkingExpanded = true">[展开全部]</span>
+                </template>
+                <template v-else>
+                  {{ step.thinking }}
+                  <span v-if="step.thinkingTruncated" class="expand-hint" @click="step.thinkingExpanded = false">[收起]</span>
+                </template>
+              </div>
             </div>
           </div>
 
@@ -97,10 +106,33 @@ function processEvent(event) {
     case 'step_start':
       steps.push({ stepNumber: event.stepNumber, status: 'running', thinking: null, toolCalls: [], toolResults: [], summary: null, expanded: true })
       break
-    case 'thinking': updateStep(s => s.thinking = event.content); break
+    case 'thinking_delta':
+      // token 级增量：逐片追加到 thinking 文本
+      updateStep(s => {
+        // 清除后端占位文本（"正在调用 LLM 分析当前状态..."）
+        if (s.thinking === null || s.thinking === '正在调用 LLM 分析当前状态...') {
+          s.thinking = ''
+        }
+        s.thinking += (event.delta || event.content || '')
+        // 超过 500 字自动折叠
+        if (s.thinking.length > 500) s.thinkingTruncated = true
+      })
+      break
+    case 'thinking':
+      // thinking 事件有两种语义：
+      // 1. deltas 之前 → 进度占位符（"正在调用 LLM..."）→ 会被 deltas 清除
+      // 2. deltas 之后 → 步骤总结（"已连续 N 步未调用工具..."）→ 放入 summary
+      updateStep(s => {
+        if (s.thinking && s.thinking !== event.content) {
+          s.summary = (s.summary ? s.summary + '\n' : '') + event.content
+        } else if (!s.thinking) {
+          s.thinking = event.content
+        }
+      })
+      break
     case 'tool_call': updateStep(s => s.toolCalls.push({ name: event.toolName, input: event.toolInput })); break
     case 'tool_result': updateStep(s => s.toolResults.push({ name: event.toolName, output: event.toolOutput, expanded: false })); break
-    case 'step_end': updateStep(s => { s.status = 'completed'; s.summary = event.content }); break
+    case 'step_end': updateStep(s => { s.status = 'completed'; if (event.content) s.summary = event.content }); break
     case 'final_answer': updateStep(s => { s.finalAnswer = event.content; s.status = 'completed' }); break
     case 'agent_error': updateStep(s => { s.status = 'error'; s.summary = event.content }); break
   }

@@ -74,19 +74,18 @@ public class TerminalOperationTool {
             "wc", "du", "df", "stat", "file",
             // 文本搜索
             "grep", "find", "findstr", "where",
-            // 网络诊断
-            "ping", "tracert", "traceroute", "nslookup", "curl", "wget",
-            // 进程信息
-            "ps", "tasklist", "top", "htop",
+            // 网络诊断（只读）
+            "ping", "tracert", "traceroute", "nslookup",
+            // 进程信息（只读）
+            "ps", "tasklist",
             // 开发工具
             "java", "javac", "python", "python3", "node", "npm", "npx",
-            "mvn", "mvnw", "gradle", "git", "docker", "kubectl",
-            // 系统信息
+            "mvn", "mvnw", "gradle", "git",
+            // 系统信息（只读）
             "uname", "hostname", "whoami", "date", "time", "echo",
             "set", "env", "printenv", "export",
-            // 文件操作（不含删除）
+            // 文件操作（不含删除和权限修改）
             "mkdir", "touch", "cp", "copy", "mv", "move", "rename",
-            "chmod", "chown",
             // 压缩解压
             "tar", "zip", "unzip", "gzip", "gunzip"
     );
@@ -146,7 +145,25 @@ public class TerminalOperationTool {
 
     // ─────────── 命令执行 ───────────
 
-    @Tool(description = "Execute a command in the terminal and return the output")
+    @Tool(description = """
+            Execute a shell command in the terminal and return the output.
+
+            WHEN TO USE: For system automation tasks, file system operations (mkdir, ls,
+            etc.), or running scripts. Use ONLY when the task cannot be accomplished with
+            other tools.
+
+            WHEN NOT TO USE: For tasks that can be done with file_write, web_search, or
+            other dedicated tools. Avoid using terminal as a workaround.
+
+            SECURITY: Only safe, whitelisted commands are allowed. Dangerous operations
+            (rm -rf, format, fork bombs, etc.) are rejected automatically.
+
+            OUTPUT: Captures stdout and stderr. Output is truncated to 4000 characters.
+            Process has a 30-second timeout.
+
+            TIP: Prefer dedicated tools (file_write, web_search, generate_pdf) over raw
+            terminal commands when a suitable tool exists.
+            """)
     public String executeTerminalCommand(
             @ToolParam(description = "Command to execute in the terminal") String command) {
 

@@ -1,3 +1,9 @@
+---
+category: rag
+tags: [RAG, 向量检索, Embedding, 文档切分, 查询重写, 知识库]
+summary: RAG 检索增强生成技术详解，涵盖文档向量化、查询重写与高级 RAG 技术
+---
+
 # RAG 检索增强生成技术
 
 ## 什么是 RAG

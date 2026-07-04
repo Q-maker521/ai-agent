@@ -1,6 +1,7 @@
 package com.aiagent.app;
 
 import com.aiagent.advisor.LoggingAdvisor;
+import com.aiagent.chatmemory.FileBasedChatMemory;
 import com.aiagent.rag.QueryRewriter;
 import jakarta.annotation.Resource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,7 +11,6 @@ import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -21,12 +21,18 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @Slf4j
 public class KnowledgeBaseService {
 
-    private final ChatClient chatClient;
+    private final ChatClient defaultChatClient;
+    private final ChatModel defaultChatModel;
+
+    /** 会话级 ChatClient 缓存（按 sessionId 隔离，各自持有独立的 ChatMemory） */
+    private final Map<String, ChatClient> sessionClients = new ConcurrentHashMap<>();
 
     private static final String SYSTEM_PROMPT = "You are a knowledgeable research assistant with access to a document repository. "
             + "Answer questions based on retrieved context. When information comes from the knowledge base, cite the source document. "
@@ -34,11 +40,14 @@ public class KnowledgeBaseService {
             + "Maintain a professional, helpful tone and structure your answers clearly.";
 
     public KnowledgeBaseService(ChatModel dashscopeChatModel) {
+        this.defaultChatModel = dashscopeChatModel;
+        FileBasedChatMemory persistentMemory = new FileBasedChatMemory(
+                System.getProperty("user.dir") + "/tmp/rag-memory");
         MessageWindowChatMemory chatMemory = MessageWindowChatMemory.builder()
-                .chatMemoryRepository(new InMemoryChatMemoryRepository())
+                .chatMemoryRepository(persistentMemory)
                 .maxMessages(20)
                 .build();
-        chatClient = ChatClient.builder(dashscopeChatModel)
+        defaultChatClient = ChatClient.builder(dashscopeChatModel)
                 .defaultSystem(SYSTEM_PROMPT)
                 .defaultAdvisors(
                         MessageChatMemoryAdvisor.builder(chatMemory).build(),
@@ -50,7 +59,7 @@ public class KnowledgeBaseService {
     // ==================== 基础对话 ====================
 
     public String doChat(String message, String chatId) {
-        ChatResponse chatResponse = chatClient
+        ChatResponse chatResponse = defaultChatClient
                 .prompt()
                 .user(message)
                 .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, chatId))
@@ -62,7 +71,7 @@ public class KnowledgeBaseService {
     }
 
     public Flux<String> doChatByStream(String message, String chatId) {
-        return chatClient
+        return defaultChatClient
                 .prompt()
                 .user(message)
                 .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, chatId))
@@ -76,20 +85,27 @@ public class KnowledgeBaseService {
     private VectorStore vectorStore;
 
     @Resource
-    private Advisor ragCloudAdvisor;
-
-    @Autowired(required = false)
-    private VectorStore pgVectorVectorStore;
-
-    @Resource
+    
     private QueryRewriter queryRewriter;
 
     /**
-     * RAG 知识库对话（同步）
+     * RAG 知识库对话（同步）— 使用默认 DashScope。
      */
     public String doChatWithRag(String message, String chatId) {
-        String rewrittenMessage = queryRewriter.doQueryRewrite(message);
-        ChatResponse chatResponse = chatClient
+        return doChatWithRag(message, chatId, null);
+    }
+
+    /**
+     * RAG 知识库对话（同步）— 使用指定 ChatModel。
+     *
+     * @param message   用户消息
+     * @param chatId    对话 ID（用于记忆隔离）
+     * @param chatModel 自定义模型（null 则使用默认 DashScope）
+     */
+    public String doChatWithRag(String message, String chatId, ChatModel chatModel) {
+        ChatClient client = resolveChatClient(chatId, chatModel);
+        String rewrittenMessage = queryRewriter.doQueryRewrite(message, chatModel);
+        ChatResponse chatResponse = client
                 .prompt()
                 .user(rewrittenMessage)
                 .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, chatId))
@@ -103,11 +119,23 @@ public class KnowledgeBaseService {
     }
 
     /**
-     * RAG 知识库对话（SSE 流式）
+     * RAG 知识库对话（SSE 流式）— 使用默认 DashScope。
      */
     public Flux<String> doChatWithRagByStream(String message, String chatId) {
-        String rewrittenMessage = queryRewriter.doQueryRewrite(message);
-        return chatClient
+        return doChatWithRagByStream(message, chatId, null);
+    }
+
+    /**
+     * RAG 知识库对话（SSE 流式）— 使用指定 ChatModel。
+     *
+     * @param message   用户消息
+     * @param chatId    对话 ID（用于记忆隔离）
+     * @param chatModel 自定义模型（null 则使用默认 DashScope）
+     */
+    public Flux<String> doChatWithRagByStream(String message, String chatId, ChatModel chatModel) {
+        ChatClient client = resolveChatClient(chatId, chatModel);
+        String rewrittenMessage = queryRewriter.doQueryRewrite(message, chatModel);
+        return client
                 .prompt()
                 .user(rewrittenMessage)
                 .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, chatId))
@@ -117,13 +145,39 @@ public class KnowledgeBaseService {
                 .content();
     }
 
+    /**
+     * 解析要使用的 ChatClient：有自定义 ChatModel 时创建会话级 client（含独立记忆），
+     * 否则回退到全局默认 client。
+     */
+    private ChatClient resolveChatClient(String chatId, ChatModel chatModel) {
+        if (chatModel != null) {
+            // 按 chatId 缓存，确保同一 RAG 会话的对话记忆连续
+            return sessionClients.computeIfAbsent(chatId, id -> {
+                FileBasedChatMemory persistentMemory = new FileBasedChatMemory(
+                        System.getProperty("user.dir") + "/tmp/rag-memory");
+                MessageWindowChatMemory memory = MessageWindowChatMemory.builder()
+                        .chatMemoryRepository(persistentMemory)
+                        .maxMessages(20)
+                        .build();
+                return ChatClient.builder(chatModel)
+                        .defaultSystem(SYSTEM_PROMPT)
+                        .defaultAdvisors(
+                                MessageChatMemoryAdvisor.builder(memory).build(),
+                                new LoggingAdvisor()
+                        )
+                        .build();
+            });
+        }
+        return defaultChatClient;
+    }
+
     // ==================== 工具调用 & MCP ====================
 
     @Resource
     private ToolCallback[] allTools;
 
     public String doChatWithTools(String message, String chatId) {
-        ChatResponse chatResponse = chatClient
+        ChatResponse chatResponse = defaultChatClient
                 .prompt()
                 .user(message)
                 .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, chatId))
@@ -140,7 +194,7 @@ public class KnowledgeBaseService {
     private ToolCallbackProvider toolCallbackProvider;
 
     public String doChatWithMcp(String message, String chatId) {
-        ChatResponse chatResponse = chatClient
+        ChatResponse chatResponse = defaultChatClient
                 .prompt()
                 .user(message)
                 .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, chatId))
@@ -157,7 +211,7 @@ public class KnowledgeBaseService {
     }
 
     public ResearchSummary doChatWithReport(String message, String chatId) {
-        ResearchSummary researchSummary = chatClient
+        ResearchSummary researchSummary = defaultChatClient
                 .prompt()
                 .system(SYSTEM_PROMPT + " After each conversation, generate a research summary with title '{username} Research Report' and a list of suggestions.")
                 .user(message)

@@ -44,9 +44,17 @@ export const connectSSE = (url, params, onMessage, onError) => {
   return eventSource
 }
 
-// AI 知识库问答聊天
-export const chatWithRag = (message, chatId) => {
-  return connectSSE('/ai/rag/chat/sse', { message, chatId })
+// AI 知识库问答聊天（支持 sessionId 复用用户配置的 Provider）
+export const chatWithRag = (message, chatId, sessionId) => {
+  const params = { message, chatId }
+  if (sessionId) params.sessionId = sessionId
+  return connectSSE('/ai/rag/chat/sse', params)
+}
+
+// 获取知识库文档目录
+export const getRagDocuments = async () => {
+  const res = await request.get('/ai/rag/documents')
+  return res.data
 }
 
 // AI 智能研发助手聊天（支持 sessionId 会话复用）
@@ -79,10 +87,43 @@ export const getConfig = async (sessionId) => {
   return res.data
 }
 
+// 查询会话上下文（包含历史消息列表 + 所有会话 ID）
+export const getSessionContext = async (sessionId) => {
+  const params = sessionId ? { sessionId } : {}
+  const res = await request.get('/ai/agent/sessions/context', { params })
+  return res.data
+}
+
+// 会话管理 API
+export const listSessions = async () => {
+  const res = await request.get('/ai/agent/sessions')
+  return res.data
+}
+
+export const getSessionDetail = async (sessionId) => {
+  const res = await request.get(`/ai/agent/sessions/${sessionId}`)
+  return res.data
+}
+
+export const deleteSession = async (sessionId) => {
+  const res = await request.delete(`/ai/agent/sessions/${sessionId}`)
+  return res.data
+}
+
+export const updateSession = async (sessionId, title) => {
+  const res = await request.patch(`/ai/agent/sessions/${sessionId}`, { title })
+  return res.data
+}
+
 export default {
   chatWithRag,
   chatWithAgent,
   chatWithAgentStream,
   saveConfig,
-  getConfig
+  getConfig,
+  getSessionContext,
+  listSessions,
+  getSessionDetail,
+  deleteSession,
+  updateSession
 }
