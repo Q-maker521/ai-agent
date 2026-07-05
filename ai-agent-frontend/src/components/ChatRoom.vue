@@ -179,7 +179,7 @@ onMounted(scroll)
   font-size: 0.78rem; font-weight: 700; border-radius: var(--radius-sm);
 }
 
-.msg-bubble { padding: 10px 15px; border-radius: var(--radius-md); min-width: 60px; }
+.msg-bubble { padding: 10px 15px; border-radius: var(--radius-md); min-width: 0; overflow: hidden; }
 .ai-msg .msg-bubble {
   background: var(--bg-primary); border: 1px solid var(--border-subtle);
   border-bottom-left-radius: var(--radius-sm);
@@ -192,7 +192,7 @@ onMounted(scroll)
 .user-msg .msg-text { color: #fff; }
 .user-msg .msg-time { color: rgba(255,255,255,0.7); }
 
-.msg-text { font-size: 0.9rem; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+.msg-text { font-size: 0.9rem; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 .msg-time { font-size: 0.68rem; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
 .typing-dot { color: var(--accent); animation: blink 0.7s infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
@@ -225,6 +225,8 @@ onMounted(scroll)
 /* Markdown 渲染样式 */
 .markdown-body :deep(p) { margin-bottom: 8px; }
 .markdown-body :deep(p:last-child) { margin-bottom: 0; }
+.markdown-body :deep(ul), .markdown-body :deep(ol) { padding-left: 1.5em; }
+.markdown-body :deep(li) { margin-bottom: 4px; }
 .markdown-body :deep(code) {
   background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 4px;
   font-family: var(--font-mono); font-size: 0.82em;
@@ -232,8 +234,9 @@ onMounted(scroll)
 .markdown-body :deep(pre) {
   background: #1d1d1f; color: #f5f5f7; padding: 12px 16px; border-radius: var(--radius-sm);
   overflow-x: auto; margin: 8px 0; font-size: 0.8rem; line-height: 1.5;
+  max-width: 100%;
 }
-.markdown-body :deep(pre code) { background: none; padding: 0; font-size: inherit; }
+.markdown-body :deep(pre code) { background: none; padding: 0; font-size: inherit; white-space: pre; overflow-wrap: normal; word-break: normal; }
 .markdown-body :deep(strong) { font-weight: 600; }
 .markdown-body :deep(a) { color: var(--accent); text-decoration: underline; }
 

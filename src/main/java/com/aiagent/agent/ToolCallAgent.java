@@ -53,7 +53,9 @@ public class ToolCallAgent extends ReActAgent {
 
     // 工具结果最大长度（字符），超过此长度会被截断。
     // 防止单步工具返回（如网页抓取）撑爆 LLM 上下文窗口。
-    private static final int MAX_TOOL_RESULT_LENGTH = 800;
+    // 搜索结果保留 4000 字符，确保 Tavily 等高质量引擎返回的正文
+    // 能被 LLM 充分阅读，从而自主判断信息是否足够，减少无效的补搜。
+    private static final int MAX_TOOL_RESULT_LENGTH = 4000;
 
     // 思考文本最大长度（字符），防止思考链过长
     private static final int MAX_THINKING_LENGTH = 1_000;

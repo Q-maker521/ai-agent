@@ -1,6 +1,6 @@
 # AI Agent 项目工作文档
 
-> 最后更新：2026-07-05 | 四轮诊断已修复 31 个问题 + 五轮功能增强已交付 5 项改进 + 六轮诊断修复 6 个问题 + 七轮诊断修复 4 个问题 + 八轮工具调用修复 + 主流架构迁移 + 九轮搜索精准度提升 + Tavily API 接入 + 十轮思考链优化 + 提示词中文化 + 十一轮记忆持久化重构（Kryo→JSON）+ 十二轮跨会话记忆分析 + 十四轮记忆会话管理优化（编码修复 + 资源泄漏 + 真机验证）+ 十五轮会话恢复体验优化（对标 ChatGPT/Claude）+ **十六轮前端 UI 整体优化（Apple 风格设计系统 + 交互增强）**
+> 最后更新：2026-07-05 | 四轮诊断已修复 31 个问题 + 五轮功能增强已交付 5 项改进 + 六轮诊断修复 6 个问题 + 七轮诊断修复 4 个问题 + 八轮工具调用修复 + 主流架构迁移 + 九轮搜索精准度提升 + Tavily API 接入 + 十轮思考链优化 + 提示词中文化 + 十一轮记忆持久化重构（Kryo→JSON）+ 十二轮跨会话记忆分析 + 十四轮记忆会话管理优化（编码修复 + 资源泄漏 + 真机验证）+ 十五轮会话恢复体验优化（对标 ChatGPT/Claude）+ 十六轮前端 UI 整体优化（Apple 风格设计系统 + 交互增强）+ **十七轮提示词架构调整（全权 LLM 自主决策 + 上下文管理优化）**
 
 ---
 
@@ -313,9 +313,9 @@ ai-agent-frontend/src/
 
 因为 `AgentChat.vue` 需要解析每个 SSE 事件中的 JSON 结构体来区分 `thinking`/`tool_call`/`tool_result`/`final_answer` 等不同类型事件，而 `api/index.js` 只是做了通用的 `connectSSE` 封装，把原始数据传回。直接用 `EventSource` 更灵活。
 
-### 6.4 工具结果截断 (2000 字符)
+### 6.4 工具结果截断
 
-`ToolCallAgent.truncateToolOutput()` 将工具结果截断到 2000 字符，并追加截断提示。这是为了避免超长工具结果撑爆 LLM 上下文窗口。
+`ToolCallAgent.truncateToolOutput()` 将工具结果截断到 `MAX_TOOL_RESULT_LENGTH`（当前 4000 字符），并追加截断提示。这是为了避免超长工具结果撑爆 LLM 上下文窗口。此值经过多次调整：2000 → 800（缩短思考链）→ 4000（全权自主，确保 LLM 有足够信息判断）。
 
 ### 6.5 安全设计：TerminalOperationTool 双层校验
 
@@ -387,7 +387,7 @@ summary: AI Agent 基础概念、核心组件与架构模式介绍
 | `server.port` | `8123` | 后端端口 |
 | `server.servlet.context-path` | `/api` | API 前缀 |
 | `spring.ai.dashscope.api-key` | `${DASHSCOPE_API_KEY:}` | 环境变量或空 |
-| `spring.ai.dashscope.chat.options.model` | `qwen-max` | 默认模型 |
+| `spring.ai.dashscope.chat.options.model` | `qwen-plus-latest` | 默认模型 |
 | `spring.ai.openai.api-key` | `${OPENAI_API_KEY:dummy}` | 兜底值 dummy |
 | `spring.ai.anthropic.api-key` | `${ANTHROPIC_API_KEY:dummy}` | 兜底值 dummy |
 | `spring.ai.ollama.base-url` | `http://localhost:11434` | 本地 Ollama |
@@ -2014,3 +2014,219 @@ Turn 4: 上下文交叉引用
 | `Skeleton.vue` | **新增** — 骨架屏 | 新增 |
 | `AiAvatarFallback.vue` | 渐变背景 | 修改 |
 
+### 26.7 消息溢出修复与侧边栏微调（2026-07-05）
+
+**问题**：Agent 长回复中的 emoji、URL、列表等内容超出会话气泡左边界。
+
+**根因**：flexbox 布局下，子元素默认 `min-width: auto`（等于内容最小宽度），导致 `.msg-bubble` 不受父容器 `.msg` 的 `max-width: 85%` 约束。
+
+**修复内容**：
+
+| 文件 | 改动 | 说明 |
+|------|------|------|
+| `ChatRoom.vue` | `.msg-bubble` 的 `min-width: 60px` → `min-width: 0` | **关键**：允许 flex 子项收缩到比内容窄，是溢出控制的基石 |
+| `ChatRoom.vue` | `.msg-bubble` 新增 `overflow: hidden` | 裁剪超出气泡边界的内容 |
+| `ChatRoom.vue` | `.msg-text` 新增 `overflow-wrap: anywhere` | 强制在 emoji、URL、长字符串任意位置断行 |
+| `ChatRoom.vue` | `.markdown-body pre code` 新增 `white-space: pre; overflow-wrap: normal` | 代码块保持 `pre` 原格式 + 横向滚动 |
+| `ChatRoom.vue` | `.markdown-body` 新增 `ul/ol/li` 样式 | 列表缩进受气泡宽度约束 |
+| `AgentChat.vue` | `.sidebar` 宽度 `260px` → `300px` | 侧边栏加宽，会话标题有更多空间 |
+
+**效果**：任何内容（emoji ✅🌟、URL、pre 代码块、Markdown 列表）均不超出对话气泡边界。
+
+---
+
+## 二十七、第十七轮：提示词架构调整 — 全权 LLM 自主决策（2026-07-05）
+
+### 27.1 背景与动机
+
+用户提出核心架构原则：
+
+> **"不编排任何使用流程，全权交由 LLM 处理，当 LLM 分析用户需求时，觉得需要再去调用工具即可。"**
+
+这意味着 Agent 的 system prompt 不应该告诉 LLM"什么时候搜索""搜几次停止""用什么格式输出"——这些是工作流编排，应该由 LLM 自主判断。
+
+### 27.2 问题诊断
+
+分析"搜索 AI 相关新闻"为什么需要很多步，发现是 **4 个因素叠加**：
+
+| # | 因素 | 具体表现 | 严重度 |
+|---|------|---------|:---:|
+| 1 | Tavily API Key 未配置 | 只用 Bing HTML 抓取，结果质量差，LLM 反复重搜 | ⭐⭐⭐⭐⭐ |
+| 2 | Bing HTML 抓取不可靠 | cn.bing.com 反爬检测，不同查询返回相同缓存结果 | ⭐⭐⭐⭐ |
+| 3 | 工具结果截断过短（800 字符） | Tavily 返回的正文摘要被截断，LLM 看不全 → 无法判断"够了没" | ⭐⭐⭐ |
+| 4 | DashScope 单工具限制 | maxToolsPerStep=1 强制串行执行 | ⭐⭐ |
+
+**核心洞察**：不是"LLM 太笨搜太多"，而是"工具能力不足导致 LLM 被迫多次尝试"。工具质量提升后，LLM 自然地减少搜索步数。
+
+### 27.3 改动内容
+
+#### 27.3.1 DevAssistantAgent Prompt 极简化
+
+**改造前**（~34 行纯中文，含知识策略、搜索条件、行为规范）：
+
+```
+== Knowledge Strategy ==
+DEFAULT: Use your own knowledge to answer directly.
+SEARCH ONLY WHEN: real-time news / specific facts / verification
+STOP SEARCHING WHEN: 3 searches poor → use own knowledge
+...
+```
+
+**改造后**（~10 行，零编排指令）：
+
+```java
+String SYSTEM_PROMPT = """
+        你是一个 AI 智能助手。
+
+        当前时间: %s
+
+        你可以使用工具来搜索网页、抓取内容、读写文件、执行终端命令、
+        生成 PDF 和下载资源。根据用户的需求自行判断是否需要调用工具。
+
+        始终使用中文回复。
+        """.formatted(currentDateTime);
+this.setSystemPrompt(SYSTEM_PROMPT);
+this.setNextStepPrompt(null);  // ★ 移除每步自检注入
+```
+
+**关键变化**：
+- ✅ 移除所有"知识策略"和"搜索条件"
+- ✅ 移除 `NEXT_STEP_PROMPT`（不再每步注入"determine the next action"）
+- ✅ 不再告诉 LLM "何时搜索""何时停止"
+- ✅ 只告知工具的存在，不指导工具的使用
+- ✅ 保留最基本的约束：中文回复
+
+**设计哲学**：和 `nextStepPrompt=null` 配套——`ToolCallAgent.think()` 检测到 null 时完全不注入任何 per-step instruction，每步 LLM 只看到对话历史 + 纯工具声明，自己判断要不要调工具。
+
+#### 27.3.2 模型升级：qwen-plus-2025-07-28 → qwen-plus-latest
+
+**原因**：`qwen-plus-2025-07-28` 缺乏元认知自我评估能力——无法判断"我搜到的信息够不够"。`qwen-plus-latest` 具备此能力，能自行决定"已经够了，停止搜索"。
+
+| 模型 | 元认知能力 | 搜索行为 |
+|------|-----------|---------|
+| `qwen-plus-2025-07-28` | ❌ 无自我评估 | "搜到结果 → 但不确定够不够 → 继续搜" |
+| `qwen-plus-latest` | ✅ 能判断信息充分性 | "搜到足够信息 → 停止 → 开始总结" |
+
+**配置变更**（`application.yml:16`）：
+```yaml
+# 改前
+model: qwen-plus-2025-07-28
+# 改后
+model: qwen-plus-latest
+```
+
+#### 27.3.3 工具结果上限：800 → 4000
+
+**原因**：第 21 轮优化中，MAX_TOOL_RESULT_LENGTH 从 2000 降为 800（为了缩短思考链）。但 Tavily 返回的正文摘要是 LLM 优化过的长文本（含具体数据、JEP 编号、来源），800 字符截断后 LLM 无法判断信息质量，反而触发更多搜索。
+
+```
+改动: MAX_TOOL_RESULT_LENGTH = 800 → 4000
+位置: ToolCallAgent.java:54-58
+```
+
+**权衡**：思考链会稍长（Tavily 优质内容值得展示），但搜索步骤减少（3-4 步降至 2-3 步），总体平衡。
+
+#### 27.3.4 前端：思考链与聊天面板彻底分离
+
+**问题**：`AgentChat.vue` 中 `thinking_delta` 事件既流向 ThinkingChain（思考链面板），又创建流式聊天消息。LLM 的推理过程泄漏到用户可见的聊天中。
+
+**修复**（`AgentChat.vue:195-232`）：
+
+```javascript
+// 改前：thinking_delta 创建/更新聊天消息
+if (evt.type === 'thinking_delta' && evt.delta) {
+  if (streamingMsgIndex === -1) {
+    streamingMsgIndex = addMessage('', false, 'ai-streaming')
+  }
+  messages.value[streamingMsgIndex].content += evt.delta
+}
+
+// 改后：thinking_delta 只流向 ThinkingChain（通过 agentEvents）
+// 聊天面板只展示 final_answer
+if (evt.type === 'final_answer' && evt.content) {
+  finalAnswerText = evt.content
+}
+```
+
+**同时清理的死代码**：
+- `streamingMsgIndex` 变量（2 处：声明 + 重置）
+- `finalResponse` 变量（声明但从未赋值）
+- 旧的 `onerror` handler 残留代码
+
+**效果**：聊天面板干净——用户只看到 LLM 最终回复，看不到推理过程。思考链面板保留完整推理细节供调试。
+
+### 27.4 实测效果
+
+使用 `qwen-plus-latest` + 最小化 Prompt + Tavily + MAX_TOOL_RESULT_LENGTH=4000 端到端测试：
+
+| 查询 | 步骤数 | 工具调用 | LLM 自主行为 |
+|------|:------:|---------|------------|
+| "搜索 AI 相关新闻" | 4 | web_search → web_scrape → web_search → downloadResource | 主动搜索权威来源（Gartner/McKinsey），自行决定下载 USCC 国会报告 PDF |
+
+**LLM 的自主决策链**：
+```
+Step 1: "我需要搜 AI 趋势" → searchWeb("AI technology trends 2025 2026...")
+Step 2: "Gartner 报告有价值，抓取详情" → scrapeWebPage(Gartner URL)
+Step 3: "还需要中国视角" → searchWeb("IEEE McKinsey 中国信通院")
+Step 4: "USCC 的 PDF 报告值得下载" → downloadResource(USCC PDF URL)
+```
+
+所有决策由 LLM 自主做出，没有任何 prompt 告诉它"要搜 Gartner""要抓取这个 URL""要下载 PDF"。
+
+### 27.5 架构反思：人工编排 vs 全权自主
+
+```
+人工编排流程     ←—————— 光谱 ——————→     全权 LLM 自主
+高效、可预测                        灵活、但行为不可控
+用户知道会得到什么                   用户不知道 LLM 会做什么
+适合生产环境                        适合探索/实验
+```
+
+当前版本选择了**全自主端**——这是用户明确要求的架构方向。代价是：
+- LLM 可能做用户没预期的事（如主动下载 PDF）
+- 步骤数不完全可控
+- 行为随模型版本变化
+
+**价值**：这种架构下，Agent 的行为是其"智能"的真实体现，而非被 prompt 编排的"木偶"。对学习 AI Agent 来说，这是更本质的观察窗口。
+
+### 27.6 与之前轮次的关键差异
+
+| 维度 | 第 8/10 轮（编排式） | 第 17 轮（自主式） |
+|------|-------------------|-------------------|
+| System Prompt | ~34 行，含知识策略/搜索条件/停止规则 | ~10 行，只声明身份 + 工具存在 |
+| nextStepPrompt | ~14 行，含行为自检 3 问 | `null`（完全不注入） |
+| 工具使用决策 | Prompt 引导"知识优先，3 次无果停止" | LLM 自行判断何时用、何时停 |
+| MAX_TOOL_RESULT_LENGTH | 800（思考链优先） | 4000（信息充分性优先） |
+| 思考链 vs 聊天 | thinking_delta 同时流向两边 | 完全分离，聊天只显示 final_answer |
+| 设计哲学 | "帮 LLM 做决策" | "让 LLM 做所有决策" |
+
+### 27.7 关键经验
+
+1. **工具质量 > Prompt 编排**：提升工具结果的质量（Tavily API + 4000 字符上限）比精心设计"3 次无果即停"更有效——LLM 看到好结果后自然会停。
+
+2. **模型的元认知能力决定自主性的上限**：`qwen-plus-2025-07-28` 即使给了精简 Prompt 也无法自主判断"够了没"，换模型解决了一切 Prompt 解决不了的问题。
+
+3. **上下文管理是取舍**：MAX_TOOL_RESULT_LENGTH=800 让思考链短但不给 LLM 足够信息判断，4000 让 LLM 决策更好但思考链更长。没有完美值，只有优先级选择。
+
+4. **自主 Agent 的行为是模型能力的真实镜像**：移除 Prompt 编排后，Agent 的行为完全反映了模型的真实能力——包括它的判断力、知识边界、以及它认为"够好"的标准。
+
+### 27.8 变更文件清单
+
+| 文件 | 改动 | 类型 |
+|------|------|------|
+| `DevAssistantAgent.java` | System Prompt 极简化（~34→~10 行），nextStepPrompt=null | 架构调整 |
+| `ToolCallAgent.java` | MAX_TOOL_RESULT_LENGTH 800→4000 | 参数调整 |
+| `application.yml` | 模型 qwen-plus-2025-07-28 → qwen-plus-latest | 配置变更 |
+| `AgentChat.vue` | thinking_delta 不再创建聊天消息 + 清理死代码（streamingMsgIndex, finalResponse） | Bug 修复 |
+
+### 27.9 统计数据
+
+| 指标 | 数值 |
+|------|------|
+| 修改文件 | 4 个 |
+| 删除代码 | ~106 行（Prompt 精简 + 前端死代码） |
+| 新增代码 | ~23 行 |
+| 净变化 | -83 行 |
+| Prompt 行数 | 34 → 10（-71%） |
+| 工具结果上限 | 800 → 4000（+400%） |
+| 模型 | qwen-plus-2025-07-28 → qwen-plus-latest |

@@ -13,7 +13,7 @@ spring:
       api-key: ${DASHSCOPE_API_KEY:}
       chat:
         options:
-          model: qwen-plus-2025-07-28
+          model: qwen-plus-latest
     openai:
       # 前端用户自行填写 — 此处仅供自动配置不会异常
       api-key: ${OPENAI_API_KEY:dummy}

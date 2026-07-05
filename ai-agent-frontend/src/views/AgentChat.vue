@@ -139,7 +139,6 @@ const sessionList = ref([])  // 会话列表
 const showSidebar = ref(true)
 const stepsCount = computed(() => agentEvents.value.filter(e => e.type === 'step_start').length)
 let eventSource = null
-let streamingMsgIndex = -1  // 当前流式消息在 messages 中的索引（模块级，避免 TDZ）
 
 const addMessage = (content, isUser, type = '') => {
   messages.value.push({ content, isUser, type, time: Date.now() })
@@ -192,68 +191,32 @@ const sendMessage = (message) => {
   if (eventSource) eventSource.close()
   connectionStatus.value = 'connecting'
   agentEvents.value = []
-  streamingMsgIndex = -1
 
   const API_BASE_URL = API_BASE
   const url = `${API_BASE_URL}/ai/agent/chat/stream?message=${encodeURIComponent(message)}&sessionId=${sessionId.value}`
   eventSource = new EventSource(url)
 
-  let finalResponse = ''
   let finalAnswerText = ''
   eventSource.onmessage = (event) => {
     try {
       const evt = JSON.parse(event.data)
       agentEvents.value.push(evt)
-      // 新步骤开始 → 重置当前步骤的流式内容
-      if (evt.type === 'step_start') {
-        finalAnswerText = ''
-        streamingMsgIndex = -1
+
+      // ★ thinking_delta 只流向 ThinkingChain（通过 agentEvents），
+      // 不进入聊天面板。聊天面板只展示 final_answer。
+
+      if (evt.type === 'final_answer' && evt.content) {
+        finalAnswerText = evt.content
       }
 
-      // token 级流式：实时更新聊天面板中的 AI 消息
-      if (evt.type === 'thinking_delta' && (evt.delta || evt.content)) {
-        const token = evt.delta || evt.content
-        finalAnswerText += token
-        if (streamingMsgIndex < 0) {
-          // 第一条 token → 创建新的流式消息
-          messages.value.push({
-            content: finalAnswerText,
-            isUser: false,
-            type: 'ai-streaming',
-            time: Date.now()
-          })
-          streamingMsgIndex = messages.value.length - 1
-        } else {
-          // 后续 token → 更新现有流式消息
-          const msg = messages.value[streamingMsgIndex]
-          if (msg) msg.content = finalAnswerText
-        }
-      }
-
-      // 注意：thinking 事件是进度通知（"正在调用 LLM..."），
-      // 不包含实际回复内容，因此不参与 finalAnswerText 的构建
-
-      if (evt.type === 'final_answer' && evt.content) finalAnswerText = evt.content
       if (evt.type === 'agent_finish') {
         connectionStatus.value = 'disconnected'
-        const reply = finalAnswerText || finalResponse.trim() || '任务完成。'
-        // 如果有流式消息，将其类型切换为 final
-        if (streamingMsgIndex >= 0) {
-          const msg = messages.value[streamingMsgIndex]
-          if (msg) {
-            msg.content = reply
-            msg.type = 'ai-final'
-          }
-        } else {
-          addMessage(reply, false, 'ai-final')
-        }
-        streamingMsgIndex = -1
+        addMessage(finalAnswerText || '任务完成。', false, 'ai-final')
         eventSource.close()
       }
       if (evt.type === 'agent_error') {
         connectionStatus.value = 'error'
         addMessage('执行出错：' + evt.content, false, 'ai-error')
-        streamingMsgIndex = -1
         eventSource.close()
       }
     } catch { /* ignore non-JSON */ }
@@ -261,17 +224,10 @@ const sendMessage = (message) => {
   eventSource.onerror = () => {
     if (connectionStatus.value === 'connecting') {
       connectionStatus.value = 'error'
-      const reply = finalAnswerText || (finalResponse ? finalResponse.trim() : '')
-      if (reply) {
-        if (streamingMsgIndex >= 0) {
-          const msg = messages.value[streamingMsgIndex]
-          if (msg) { msg.content = reply; msg.type = 'ai-final' }
-        } else {
-          addMessage(reply, false, 'ai-final')
-        }
+      if (finalAnswerText) {
+        addMessage(finalAnswerText, false, 'ai-final')
       }
     }
-    streamingMsgIndex = -1
     eventSource.close()
   }
 }
@@ -410,7 +366,7 @@ onBeforeUnmount(() => {
 
 /* ===== 侧边栏 ===== */
 .sidebar {
-  width: 260px; flex-shrink: 0;
+  width: 300px; flex-shrink: 0;
   display: flex; flex-direction: column;
   background: var(--bg-primary);
   border-right: 1px solid var(--border-subtle);
