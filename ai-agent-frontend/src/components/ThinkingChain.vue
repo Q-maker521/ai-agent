@@ -10,7 +10,8 @@
         <p>发送任务后，这里将实时展示<br>Agent 的推理过程</p>
       </div>
 
-      <div v-for="step in steps" :key="step.stepNumber" class="step-card" :class="step.status">
+      <TransitionGroup name="step" tag="div">
+        <div v-for="step in steps" :key="step.stepNumber" class="step-card" :class="step.status">
         <div class="step-header" @click="toggleStep(step)">
           <div class="step-indicator">
             <span v-if="step.status === 'running'" class="spinner"></span>
@@ -22,7 +23,8 @@
           <div class="step-toggle">{{ step.expanded ? '▾' : '▸' }}</div>
         </div>
 
-        <div v-if="step.expanded" class="step-body">
+        <Transition name="collapse">
+          <div v-if="step.expanded" class="step-body">
           <div v-if="step.thinking" class="event-block thinking">
             <div class="event-icon">💭</div>
             <div class="event-content">
@@ -45,7 +47,7 @@
             <div class="event-content">
               <div class="event-label">调用工具</div>
               <div class="tool-name">{{ call.name }}</div>
-              <pre class="code-block">{{ formatJson(call.input) }}</pre>
+              <pre class="code-block colored" v-html="colorizeJson(call.input)"></pre>
             </div>
           </div>
 
@@ -74,7 +76,9 @@
             </div>
           </div>
         </div>
+        </Transition>
       </div>
+      </TransitionGroup>
 
       <div v-if="isRunning && steps.length === 0" class="running-hint">
         <span class="spinner large"></span>
@@ -142,6 +146,17 @@ function updateStep(fn) { if (steps.length > 0) fn(steps[steps.length - 1]) }
 function toggleStep(step) { step.expanded = !step.expanded }
 function formatJson(str) { try { return JSON.stringify(JSON.parse(str), null, 2) } catch { return str } }
 function truncate(text, max) { if (!text) return ''; return text.length > max ? text.substring(0, max) + '...' : text }
+function colorizeJson(str) {
+  try {
+    const obj = JSON.parse(str)
+    return JSON.stringify(obj, null, 2)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/("(?:\\.|[^"\\])*")(\s*:)/g, '<span class="json-key">$1</span>$2')
+      .replace(/: (\d+\.?\d*)/g, ': <span class="json-number">$1</span>')
+      .replace(/: "(?:\\.|[^"\\])*"/g, (m) => m.replace(/(: )"((?:\\.|[^"\\])*)"/, '$1<span class="json-string">"$2"</span>'))
+      .replace(/: (true|false|null)/g, ': <span class="json-bool">$1</span>')
+  } catch { return str }
+}
 </script>
 
 <style scoped>
@@ -170,7 +185,11 @@ function truncate(text, max) { if (!text) return ''; return text.length > max ? 
   background: var(--bg-secondary); border: 1px solid var(--border-subtle);
   overflow: hidden; transition: all 0.2s;
 }
-.step-card.running { border-color: var(--accent-light); }
+.step-card.running {
+  border-color: var(--accent-light);
+  border-left: 3px solid var(--accent);
+  animation: pulse-glow 2s infinite;
+}
 .step-card.completed { border-color: rgba(5, 150, 105, 0.2); }
 .step-card.error { border-color: rgba(220, 38, 38, 0.2); }
 
@@ -225,5 +244,52 @@ function truncate(text, max) { if (!text) return ''; return text.length > max ? 
 .running-hint {
   display: flex; flex-direction: column; align-items: center;
   padding: 40px 20px; color: var(--text-muted); font-size: 0.85rem;
+}
+
+/* Step entrance animation */
+.step-enter-active {
+  transition: all 0.35s var(--spring);
+}
+.step-enter-from {
+  opacity: 0;
+  transform: translateX(16px);
+}
+
+/* Pulse glow for running steps */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb, 99, 102, 241), 0.3); }
+  50% { box-shadow: 0 0 0 4px rgba(var(--accent-rgb, 99, 102, 241), 0); }
+}
+
+/* JSON syntax coloring */
+.code-block.colored :deep(.json-key)    { color: #881391; }
+.code-block.colored :deep(.json-string) { color: #1a7f37; }
+.code-block.colored :deep(.json-number) { color: #0550ae; }
+.code-block.colored :deep(.json-bool)   { color: #cf222e; }
+
+/* Collapse transition */
+.collapse-enter-active, .collapse-leave-active {
+  transition: max-height 0.35s var(--ease-out), opacity 0.2s;
+  overflow: hidden;
+}
+.collapse-enter-from, .collapse-leave-to {
+  max-height: 0; opacity: 0;
+}
+.collapse-enter-to, .collapse-leave-from {
+  max-height: 2000px; opacity: 1;
+}
+
+/* Blinking cursor for thinking_delta */
+.step-card.running .event-text {
+  position: relative;
+}
+.step-card.running .event-text::after {
+  content: '▊';
+  color: var(--accent);
+  animation: blink-cursor 0.8s infinite;
+}
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 </style>
