@@ -14,14 +14,14 @@
 
     <!-- Hero -->
     <section class="hero">
-      <h1 class="hero-title">
+      <h1 class="hero-title animate-in" style="animation-delay: 0ms">
         构建能<span class="hero-accent">思考、行动、观察</span>的智能体
       </h1>
-      <p class="hero-desc">
+      <p class="hero-desc animate-in" style="animation-delay: 80ms">
         基于 ReAct 模式的自主规划 AI Agent 平台。支持多工具编排、RAG 知识检索、
         结构化流式输出与思考链实时可视化。
       </p>
-      <div class="hero-actions">
+      <div class="hero-actions animate-in" style="animation-delay: 160ms">
         <button class="btn-primary" @click="navigateTo('/agent-chat')">
           体验 Agent <span class="arrow">→</span>
         </button>
@@ -31,11 +31,11 @@
       </div>
       <div class="hero-stats">
         <div class="stat">
-          <span class="stat-value">7</span>
+          <span class="stat-value">{{ toolCount }}</span>
           <span class="stat-label">内置工具</span>
         </div>
         <div class="stat">
-          <span class="stat-value">20</span>
+          <span class="stat-value">{{ stepCount }}</span>
           <span class="stat-label">最大步数</span>
         </div>
         <div class="stat">
@@ -65,6 +65,9 @@
           </div>
         </div>
         <div class="card-arrow">→</div>
+        <div class="card-hint" @click.stop="navigateTo('/agent-chat'); /* 后续通过 query 传参 */">
+          💡 试试: "帮我分析今天 AI 领域的重大新闻"
+        </div>
       </div>
 
       <div class="card" @click="navigateTo('/knowledge-rag')">
@@ -81,6 +84,32 @@
           </div>
         </div>
         <div class="card-arrow">→</div>
+        <div class="card-hint" @click.stop="navigateTo('/knowledge-rag'); /* 后续通过 query 传参 */">
+          💡 试试: "帮我分析今天 AI 领域的重大新闻"
+        </div>
+      </div>
+    </section>
+
+    <section class="workflow-demo">
+      <h2>Agent 如何工作？</h2>
+      <div class="workflow-steps">
+        <div class="wf-step">
+          <div class="wf-icon">💡</div>
+          <div class="wf-title">思考</div>
+          <div class="wf-desc">"用户想要最新 AI 新闻，我需要搜索"</div>
+        </div>
+        <div class="wf-arrow">→</div>
+        <div class="wf-step">
+          <div class="wf-icon">🔧</div>
+          <div class="wf-title">行动</div>
+          <div class="wf-desc">调用 web_search<br/>查询 AI 相关新闻</div>
+        </div>
+        <div class="wf-arrow">→</div>
+        <div class="wf-step">
+          <div class="wf-icon">📋</div>
+          <div class="wf-title">观察</div>
+          <div class="wf-desc">分析搜索结果<br/>生成最终回复</div>
+        </div>
       </div>
     </section>
 
@@ -91,8 +120,29 @@
 </template>
 
 <script setup>
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHead } from '@vueuse/head'
+
+// ── Count-up animation ──
+const toolCount = ref(0)
+const stepCount = ref(0)
+
+function animateCount(refVar, target, duration = 600) {
+  const start = performance.now()
+  function tick(now) {
+    const p = Math.min((now - start) / duration, 1)
+    const eased = 1 - Math.pow(1 - p, 3) // ease-out cubic
+    refVar.value = Math.round(eased * target)
+    if (p < 1) requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+}
+
+onMounted(() => {
+  animateCount(toolCount, 7)
+  setTimeout(() => animateCount(stepCount, 20), 200)
+})
 
 useHead({
   title: 'AI Agent 平台 — 自主规划智能体',
@@ -255,6 +305,39 @@ const navigateTo = (path) => router.push(path)
 }
 .card:hover .card-arrow { background: var(--accent); color: #fff; }
 
+.card-hint {
+  margin-top: 14px; padding: 10px 14px;
+  background: var(--bg-secondary); border-radius: var(--radius-sm);
+  font-size: 0.8rem; color: var(--accent); cursor: pointer;
+  transition: background 0.2s;
+}
+.card-hint:hover { background: var(--accent-light); }
+
+/* Workflow Demo */
+.workflow-demo {
+  text-align: center; padding: 48px 24px 64px;
+  max-width: 700px; margin: 0 auto;
+}
+.workflow-demo h2 {
+  font-size: 1.3rem; font-weight: 700; margin-bottom: 32px;
+  color: var(--text-primary);
+}
+.workflow-steps {
+  display: flex; align-items: flex-start; justify-content: center;
+  gap: 16px;
+}
+.wf-step {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 8px; flex: 1; max-width: 180px;
+}
+.wf-icon { font-size: 2rem; }
+.wf-title { font-size: 0.9rem; font-weight: 700; color: var(--text-primary); }
+.wf-desc { font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5; }
+.wf-arrow {
+  font-size: 1.2rem; color: var(--text-muted);
+  margin-top: 18px;
+}
+
 /* Footer */
 .footer {
   text-align: center; padding: 20px;
@@ -270,5 +353,7 @@ const navigateTo = (path) => router.push(path)
   .hero-stats { gap: 24px; }
   .card { padding: 20px 22px; }
   .card-arrow { display: none; }
+  .workflow-steps { flex-direction: column; align-items: center; }
+  .wf-arrow { transform: rotate(90deg); margin: 0; }
 }
 </style>
