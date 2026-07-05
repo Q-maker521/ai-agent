@@ -9,10 +9,19 @@
             <AiAvatarFallback :type="aiType" />
           </div>
           <div class="msg-bubble">
-            <div class="msg-text">{{ msg.content }}</div>
+            <div v-if="msg.type === 'ai-final'" class="msg-text markdown-body" v-html="renderMarkdown(msg.content)"></div>
+            <div v-else class="msg-text">{{ msg.content }}</div>
             <div class="msg-time">
               {{ formatTime(msg.time) }}
               <span v-if="connectionStatus === 'connecting' && index === messages.length - 1" class="typing-dot">●</span>
+            </div>
+            <div v-if="msg.type === 'ai-final'" class="msg-actions">
+              <button class="action-btn" @click="copyMessage(msg.content)" title="复制">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              </button>
+              <button class="action-btn" @click="regenerate(msg, index)" title="重新生成">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+              </button>
             </div>
           </div>
         </div>
@@ -54,8 +63,36 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick, onMounted } from 'vue'
+import { ref, watch, nextTick, onMounted, inject } from 'vue'
 import AiAvatarFallback from './AiAvatarFallback.vue'
+import { marked } from 'marked'
+import hljs from 'highlight.js/lib/core'
+import javascript from 'highlight.js/lib/languages/javascript'
+import json from 'highlight.js/lib/languages/json'
+import bash from 'highlight.js/lib/languages/bash'
+import python from 'highlight.js/lib/languages/python'
+import java from 'highlight.js/lib/languages/java'
+import xml from 'highlight.js/lib/languages/xml'
+import 'highlight.js/styles/github.css'
+
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('json', json)
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('java', java)
+hljs.registerLanguage('xml', xml)
+hljs.registerLanguage('html', xml)
+
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+  highlight(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value
+    }
+    return hljs.highlightAuto(code).value
+  }
+})
 
 const props = defineProps({
   messages: { type: Array, default: () => [] },
@@ -63,7 +100,8 @@ const props = defineProps({
   aiType: { type: String, default: 'agent' }
 })
 
-const emit = defineEmits(['send-message'])
+const emit = defineEmits(['send-message', 'regenerate'])
+const toast = inject('toast', () => {})
 const inputMessage = ref('')
 const messagesContainer = ref(null)
 
@@ -73,11 +111,50 @@ const send = () => {
   inputMessage.value = ''
 }
 
-const formatTime = (ts) => new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+function formatTime(ts) {
+  const d = new Date(ts)
+  const now = new Date()
+  const time = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  if (d.toDateString() === now.toDateString()) return time
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (d.toDateString() === yesterday.toDateString()) return '昨天 ' + time
+  return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${time}`
+}
 
-const scroll = async () => {
-  await nextTick()
-  if (messagesContainer.value) messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+function renderMarkdown(text) {
+  if (!text) return ''
+  return marked(text)
+}
+
+async function copyMessage(text) {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast('已复制到剪贴板', 'success')
+  } catch {
+    toast('复制失败', 'error')
+  }
+}
+
+function regenerate(msg, msgIndex) {
+  const msgs = props.messages
+  for (let i = msgIndex - 1; i >= 0; i--) {
+    if (msgs[i].isUser) {
+      emit('regenerate', msgs[i].content)
+      return
+    }
+  }
+}
+
+function scroll() {
+  nextTick(() => {
+    const el = messagesContainer.value
+    if (!el) return
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100
+    if (atBottom) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    }
+  })
 }
 
 watch(() => props.messages.length, scroll)
@@ -143,6 +220,44 @@ onMounted(scroll)
 }
 .send-btn:hover:not(:disabled) { box-shadow: 0 2px 12px var(--accent-glow); }
 .send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* Markdown 渲染样式 */
+.markdown-body :deep(p) { margin-bottom: 8px; }
+.markdown-body :deep(p:last-child) { margin-bottom: 0; }
+.markdown-body :deep(code) {
+  background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 4px;
+  font-family: var(--font-mono); font-size: 0.82em;
+}
+.markdown-body :deep(pre) {
+  background: #1d1d1f; color: #f5f5f7; padding: 12px 16px; border-radius: var(--radius-sm);
+  overflow-x: auto; margin: 8px 0; font-size: 0.8rem; line-height: 1.5;
+}
+.markdown-body :deep(pre code) { background: none; padding: 0; font-size: inherit; }
+.markdown-body :deep(strong) { font-weight: 600; }
+.markdown-body :deep(a) { color: var(--accent); text-decoration: underline; }
+
+/* 消息操作栏 */
+.msg-actions {
+  display: flex; gap: 4px; margin-top: 6px;
+  opacity: 0; transition: opacity 0.15s;
+}
+.ai-msg:hover .msg-actions { opacity: 1; }
+.action-btn {
+  width: 28px; height: 28px; border-radius: 6px;
+  border: 1px solid var(--border-subtle); background: var(--bg-primary);
+  color: var(--text-secondary); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.action-btn:hover { color: var(--accent); border-color: var(--accent-light); }
+
+/* 流式打字光标 */
+.ai-streaming .msg-text::after {
+  content: '▊';
+  color: var(--accent);
+  animation: blink-cursor 0.8s infinite;
+}
+@keyframes blink-cursor { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
 @media (max-width: 768px) {
   .messages { padding: 14px 12px; }

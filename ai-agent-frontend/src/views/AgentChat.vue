@@ -77,6 +77,7 @@
             :connection-status="connectionStatus"
             ai-type="agent"
             @send-message="sendMessage"
+            @regenerate="sendMessage"
           />
         </div>
 

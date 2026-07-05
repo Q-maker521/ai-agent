@@ -17,6 +17,7 @@
         :connection-status="connectionStatus"
         ai-type="rag"
         @send-message="sendMessage"
+        @regenerate="sendMessage"
       />
     </div>
   </div>
