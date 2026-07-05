@@ -6,7 +6,14 @@
         返回
       </button>
       <h1>设置</h1>
-      <div style="width:60px"></div>
+      <div class="header-right">
+        <span v-if="statusMsg" class="status-inline" :class="{ ok: statusOk, err: !statusOk }">
+          {{ statusMsg }}
+        </span>
+        <button class="save-btn-sm" @click="saveSettings" :disabled="saving || !apiKey.trim()">
+          {{ saving ? '保存中...' : '保存' }}
+        </button>
+      </div>
     </header>
 
     <div class="content">
@@ -33,6 +40,9 @@
         </div>
         <p class="card-desc">{{ providerDesc[selectedProvider] || '输入你对应平台的 API Key' }} Key 仅保存在你的浏览器和当前会话中。</p>
         <div class="input-with-toggle">
+          <button class="paste-btn" @click="pasteApiKey" title="从剪贴板粘贴">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
           <input
             :type="showKey ? 'text' : 'password'"
             v-model="apiKey"
@@ -101,17 +111,6 @@
         </p>
       </div>
 
-      <!-- 保存 -->
-      <div class="actions">
-        <button class="save-btn" @click="saveSettings" :disabled="saving || !apiKey.trim()">
-          <span v-if="saving" class="spinner-sm"></span>
-          <span v-else>保存配置</span>
-        </button>
-        <div class="status" v-if="statusMsg">
-          <span class="status-dot" :class="statusOk ? 'ok' : 'err'"></span>
-          {{ statusMsg }}
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -209,6 +208,13 @@ function selectCustom() { useCustom.value = true; statusMsg.value = '' }
 function onInputChange() { statusMsg.value = '' }
 function goBack() { router.push('/') }
 
+async function pasteApiKey() {
+  try {
+    const text = await navigator.clipboard.readText()
+    if (text) apiKey.value = text.trim()
+  } catch { /* permission denied */ }
+}
+
 async function saveSettings() {
   const modelName = useCustom.value ? customModel.value.trim() : selectedModel.value
   if (!modelName) {
@@ -277,6 +283,17 @@ onMounted(async () => {
   cursor: pointer; transition: all 0.2s; font-family: var(--font-ui);
 }
 .back-btn:hover { color: var(--accent); border-color: var(--accent-light); }
+.header-right { display: flex; align-items: center; gap: 12px; }
+.save-btn-sm {
+  padding: 6px 16px; border: none; background: var(--accent); color: #fff;
+  font-size: 0.82rem; font-weight: 600; font-family: var(--font-ui);
+  border-radius: var(--radius-sm); cursor: pointer; transition: all 0.2s;
+}
+.save-btn-sm:hover:not(:disabled) { background: var(--accent-hover); }
+.save-btn-sm:disabled { opacity: 0.4; cursor: not-allowed; }
+.status-inline { font-size: 0.78rem; }
+.status-inline.ok { color: var(--success); }
+.status-inline.err { color: var(--error); }
 
 .content { flex: 1; overflow-y: auto; padding: 24px; max-width: 640px; margin: 0 auto; width: 100%; }
 
@@ -292,12 +309,17 @@ onMounted(async () => {
 /* Provider tabs */
 .provider-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .provider-tab {
-  padding: 8px 18px; border-radius: var(--radius-md); font-size: 0.84rem; font-weight: 500;
-  border: 1px solid var(--border-subtle); background: var(--bg-primary);
-  color: var(--text-secondary); cursor: pointer; transition: all 0.15s; font-family: var(--font-ui);
+  padding: 8px 18px; border-radius: 0;
+  font-size: 0.84rem; font-weight: 500;
+  border: none; border-bottom: 2px solid transparent;
+  background: transparent; color: var(--text-secondary);
+  cursor: pointer; transition: all 0.2s; font-family: var(--font-ui);
 }
-.provider-tab:hover { border-color: var(--accent-light); color: var(--accent); }
-.provider-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.provider-tab:hover { color: var(--text-primary); border-bottom-color: var(--border-default); }
+.provider-tab.active {
+  background: transparent; color: var(--accent);
+  border-bottom-color: var(--accent);
+}
 
 /* API Key */
 .input-with-toggle { display: flex; align-items: center; gap: 8px; }
@@ -308,6 +330,13 @@ onMounted(async () => {
 }
 .key-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
 .key-input::placeholder { color: var(--text-muted); font-family: var(--font-ui); font-size: 0.78rem; }
+.paste-btn {
+  width: 36px; height: 38px; display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  background: var(--bg-primary); color: var(--text-muted); cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+}
+.paste-btn:hover { color: var(--accent); border-color: var(--accent-light); }
+
 .toggle-btn {
   width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
   border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
@@ -351,22 +380,6 @@ onMounted(async () => {
 .link { color: var(--accent); font-weight: 500; text-decoration: underline; text-underline-offset: 2px; }
 .link:hover { opacity: 0.8; }
 
-.actions { display: flex; align-items: center; gap: 16px; margin-top: 4px; }
-.save-btn {
-  padding: 10px 32px; border: none; background: var(--accent); color: #fff;
-  font-size: 0.88rem; font-weight: 600; font-family: var(--font-ui);
-  border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s;
-  display: flex; align-items: center; gap: 8px;
-}
-.save-btn:hover:not(:disabled) { box-shadow: 0 2px 12px var(--accent-glow); }
-.save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.spinner-sm { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.status { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--text-secondary); }
-.status-dot { width: 7px; height: 7px; border-radius: 50%; }
-.status-dot.ok { background: var(--success); }
-.status-dot.err { background: var(--error); }
 
 @media (max-width: 768px) { .content { padding: 16px; } .card { padding: 16px 18px; } }
 </style>
