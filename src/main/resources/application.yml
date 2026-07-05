@@ -45,6 +45,12 @@ server:
   port: 8123
   servlet:
     context-path: /api
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+  tomcat:
+    uri-encoding: UTF-8
 # springdoc-openapi config
 springdoc:
   swagger-ui:

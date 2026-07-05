@@ -132,6 +132,11 @@ public class AgentSessionManager {
         agent.loadSessionHistory();
         // 每次持久化后自动更新会话元数据（标题、消息数）
         agent.setOnPersistCallback(() -> ensureSessionMeta(agent, sessionId));
+        // Agent 生命周期结束时清理 cancelFlag，防止 Map 无限增长
+        agent.setOnCleanupCallback(() -> {
+            cancelFlags.remove(sessionId);
+            log.debug("Cleaned up cancel flag for session {}", sessionId);
+        });
     }
 
     /**
@@ -246,18 +251,27 @@ public class AgentSessionManager {
     }
 
     /**
-     * 列出所有磁盘上持久化的会话 ID。
+     * 列出所有磁盘上持久化的会话 ID（含 .json 和旧 .kryo 格式）。
      */
     public java.util.Set<String> getPersistedSessionIds() {
-        java.io.File dir = new java.io.File(
-                persistenceDir);
-        java.io.File[] files = dir.listFiles((d, name) -> name.endsWith(".kryo"));
-        if (files == null) {
-            return java.util.Collections.emptySet();
+        java.io.File dir = new java.io.File(persistenceDir);
+        java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+        // .json（新格式）
+        java.io.File[] jsonFiles = dir.listFiles((d, name)
+                -> name.endsWith(".json") && !name.endsWith(".json.tmp") && !name.endsWith(".meta.json"));
+        if (jsonFiles != null) {
+            for (java.io.File f : jsonFiles) {
+                ids.add(f.getName().replace(".json", ""));
+            }
         }
-        return java.util.Arrays.stream(files)
-                .map(f -> f.getName().replace(".kryo", ""))
-                .collect(java.util.stream.Collectors.toSet());
+        // .kryo（旧格式，兼容）
+        java.io.File[] kryoFiles = dir.listFiles((d, name) -> name.endsWith(".kryo"));
+        if (kryoFiles != null) {
+            for (java.io.File f : kryoFiles) {
+                ids.add(f.getName().replace(".kryo", ""));
+            }
+        }
+        return ids;
     }
 
     // ==================== 会话元数据管理 ====================
@@ -322,26 +336,29 @@ public class AgentSessionManager {
     public java.util.List<SessionMeta> listSessions() {
         java.util.Map<String, SessionMeta> all = new java.util.LinkedHashMap<>();
 
-        // 1. 从磁盘 .kryo 文件反推所有会话
-        java.io.File dir = new java.io.File(
-                persistenceDir);
+        // 1. 从磁盘数据文件（.json 或旧 .kryo）反推所有会话
+        java.io.File dir = new java.io.File(persistenceDir);
+        // 1a. .json（新格式）
+        java.io.File[] jsonFiles = dir.listFiles((d, name)
+                -> name.endsWith(".json") && !name.endsWith(".json.tmp") && !name.endsWith(".meta.json"));
+        if (jsonFiles != null) {
+            for (java.io.File f : jsonFiles) {
+                String id = f.getName().replace(".json", "");
+                addSessionFromDisk(id, all);
+            }
+        }
+        // 1b. .kryo（旧格式，兼容迁移中）
         java.io.File[] kryoFiles = dir.listFiles((d, name) -> name.endsWith(".kryo"));
         if (kryoFiles != null) {
             for (java.io.File f : kryoFiles) {
                 String id = f.getName().replace(".kryo", "");
-                SessionMeta meta = loadSessionMeta(id);
-                if (meta == null) {
-                    // 有 .kryo 但没有 .meta.json → 生成兜底 meta
-                    int msgCount = chatMemory.exists(id)
-                            ? chatMemory.get(id).size() : 0;
-                    meta = SessionMeta.create(id, "未命名会话", msgCount);
-                    saveSessionMeta(meta);
+                if (!all.containsKey(id)) {
+                    addSessionFromDisk(id, all);
                 }
-                all.put(id, meta);
             }
         }
 
-        // 2. 有 .meta.json 但 .kryo 被清理的幽灵会话 → 跳过并清理 meta
+        // 2. 有 .meta.json 但数据文件被清理的幽灵会话 → 清理 meta
         java.io.File[] metaFiles = dir.listFiles((d, name) -> name.endsWith(".meta.json"));
         if (metaFiles != null) {
             for (java.io.File f : metaFiles) {
@@ -375,6 +392,20 @@ public class AgentSessionManager {
         return all.values().stream()
                 .sorted((a, b) -> Long.compare(b.lastAccessedAt(), a.lastAccessedAt()))
                 .collect(java.util.stream.Collectors.toList());
+    }
+
+    /**
+     * 从磁盘数据文件加载会话元数据加入列表（用于 listSessions）。
+     */
+    private void addSessionFromDisk(String id, java.util.Map<String, SessionMeta> all) {
+        SessionMeta meta = loadSessionMeta(id);
+        if (meta == null) {
+            int msgCount = chatMemory.exists(id)
+                    ? chatMemory.get(id).size() : 0;
+            meta = SessionMeta.create(id, "未命名会话", msgCount);
+            saveSessionMeta(meta);
+        }
+        all.put(id, meta);
     }
 
     /**
@@ -428,19 +459,42 @@ public class AgentSessionManager {
     }
 
     /**
-     * 为指定会话自动生成标题（基于已有消息），并写入 .meta.json。
-     * 供 BaseAgent 在首次持久化时调用。
+     * 更新会话元数据（每次持久化时调用，同步 messageCount 和时间戳）。
+     * <p>
+     * 首次调用创建 meta；后续调用更新 messageCount 和 lastAccessedAt。
+     * 标题一旦由用户手动重命名，不再被自动覆盖。
      */
     public void ensureSessionMeta(DevAssistantAgent agent, String sessionId) {
         if (sessionId == null || sessionId.isBlank()) return;
-        // 已有 meta 则跳过（由 persistModelConfig 在创建时写入，这里仅作兜底）
-        if (loadSessionMeta(sessionId) != null) return;
         var messages = agent.getMessageList();
-        String title = autoTitleFromMessages(messages);
         int msgCount = messages.size();
-        SessionMeta meta = SessionMeta.create(sessionId, title, msgCount);
-        saveSessionMeta(meta);
-        log.info("Created session meta: {} -> \"{}\" ({} msgs)", sessionId, title, msgCount);
+        SessionMeta old = loadSessionMeta(sessionId);
+
+        if (old == null) {
+            // 首次创建
+            String title = autoTitleFromMessages(messages);
+            SessionMeta meta = SessionMeta.create(sessionId, title, msgCount);
+            saveSessionMeta(meta);
+            log.info("Created session meta: {} -> \"{}\" ({} msgs)", sessionId, title, msgCount);
+        } else {
+            // 每次都更新 msgCount 和 lastAccessedAt；
+            // 标题保留已有的（用户可能手动修改），仅"未命名会话"兜底时自动生成
+            String title = old.title();
+            if (title == null || title.isBlank() || "未命名会话".equals(title)) {
+                title = autoTitleFromMessages(messages);
+            }
+            SessionMeta updated = new SessionMeta(
+                    sessionId,
+                    title,
+                    msgCount,
+                    old.createdAt(),
+                    System.currentTimeMillis(),
+                    old.isActive(),
+                    old.provider(),
+                    old.modelName()
+            );
+            saveSessionMeta(updated);
+        }
     }
 
     /**
@@ -496,24 +550,24 @@ public class AgentSessionManager {
             log.info("Cleaned {} expired sessions from memory, {} remaining", removed, sessions.size());
         }
 
-        // 2. 磁盘清理：超过 7 天未修改的持久化文件
+        // 2. 磁盘清理：超过 7 天未修改的持久化文件（.json + .kryo）
         File dir = new File(persistenceDir);
-        File[] kryoFiles = dir.listFiles((d, n) -> n.endsWith(".kryo"));
-        if (kryoFiles != null) {
-            int diskRemoved = 0;
-            for (File f : kryoFiles) {
-                if (now - f.lastModified() > DISK_TTL_MS) {
-                    String id = f.getName().replace(".kryo", "");
-                    deleteSessionFiles(id);
-                    diskRemoved++;
-                    log.info("Purged stale disk session: {} (age: {} days)",
-                            id, (now - f.lastModified()) / (24 * 60 * 60 * 1000));
+        // 辅助函数：按扩展名清理
+        java.util.function.BiConsumer<String, String> purgeByExt = (ext, suffix) -> {
+            File[] files = dir.listFiles((d, n) -> n.endsWith(ext));
+            if (files != null) {
+                for (File f : files) {
+                    if (now - f.lastModified() > DISK_TTL_MS) {
+                        String id = f.getName().replace(suffix, "");
+                        deleteSessionFiles(id);
+                        log.info("Purged stale disk session: {} (age: {} days)",
+                                id, (now - f.lastModified()) / (24 * 60 * 60 * 1000));
+                    }
                 }
             }
-            if (diskRemoved > 0) {
-                log.info("Cleaned {} stale disk sessions", diskRemoved);
-            }
-        }
+        };
+        purgeByExt.accept(".json", ".json");
+        purgeByExt.accept(".kryo", ".kryo");
     }
 
     /**
@@ -522,24 +576,28 @@ public class AgentSessionManager {
      */
     private void enforceDiskQuota() {
         File dir = new File(persistenceDir);
-        File[] kryoFiles = dir.listFiles((d, n) -> n.endsWith(".kryo"));
-        if (kryoFiles == null || kryoFiles.length <= MAX_DISK_SESSIONS) return;
+        // 收集所有数据文件（.json + .kryo，排除 .tmp 和 .meta）
+        File[] allDataFiles = dir.listFiles((d, n)
+                -> (n.endsWith(".json") && !n.endsWith(".json.tmp") && !n.endsWith(".meta.json"))
+                || n.endsWith(".kryo"));
+        if (allDataFiles == null || allDataFiles.length <= MAX_DISK_SESSIONS) return;
 
         // 按最后修改时间升序（最旧的在前）
-        Arrays.sort(kryoFiles, Comparator.comparingLong(File::lastModified));
-        int toDelete = kryoFiles.length - MAX_DISK_SESSIONS;
+        Arrays.sort(allDataFiles, Comparator.comparingLong(File::lastModified));
+        int toDelete = allDataFiles.length - MAX_DISK_SESSIONS;
         for (int i = 0; i < toDelete; i++) {
-            String id = kryoFiles[i].getName().replace(".kryo", "");
+            String name = allDataFiles[i].getName();
+            String id = name.replace(".json", "").replace(".kryo", "");
             // 跳过当前内存中的活跃会话，只删纯磁盘文件
             if (sessions.containsKey(id)) continue;
             deleteSessionFiles(id);
             log.info("Disk quota: purged oldest session {} ({} total → {} max)",
-                    id, kryoFiles.length, MAX_DISK_SESSIONS);
+                    id, allDataFiles.length, MAX_DISK_SESSIONS);
         }
     }
 
     /**
-     * 仅删除磁盘文件（.kryo + .meta.json），不影响内存活跃会话。
+     * 仅删除磁盘文件（.json + .kryo + .meta.json + .tmp），不影响内存活跃会话。
      */
     private void deleteSessionFiles(String sessionId) {
         chatMemory.clear(sessionId);

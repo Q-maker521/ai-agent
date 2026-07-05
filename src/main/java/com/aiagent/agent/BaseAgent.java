@@ -73,6 +73,9 @@ public abstract class BaseAgent {
     // 持久化后回调（由 AgentSessionManager 注入，用于同步更新 .meta.json）
     private Runnable onPersistCallback;
 
+    // Agent 生命周期结束回调（由 AgentSessionManager 注入，用于清理 cancelFlags 等）
+    private Runnable onCleanupCallback;
+
     // 取消标志（由 AgentSessionManager 设置，Esc 中断时用）
     private volatile boolean cancelled = false;
 
@@ -394,9 +397,17 @@ public abstract class BaseAgent {
     public abstract String step();
 
     /**
-     * 清理资源 — 子类可按需重写
+     * 清理资源 — 子类可按需重写。
+     * 调用 onCleanupCallback 清理外部状态（如 cancelFlags）。
      */
     protected void cleanup() {
+        if (onCleanupCallback != null) {
+            try {
+                onCleanupCallback.run();
+            } catch (Exception e) {
+                log.warn("Cleanup callback failed for session {}: {}", sessionId, e.getMessage());
+            }
+        }
     }
 
     /**
@@ -413,22 +424,32 @@ public abstract class BaseAgent {
             List<Message> saved = chatMemory.get(sessionId);
             if (CollUtil.isNotEmpty(saved)) {
                 this.messageList = saved;
+                this.lastPersistedSize = saved.size(); // 同步，避免恢复后首次 persist 冗余写入
                 log.info("Loaded {} messages from disk for session {}", saved.size(), sessionId);
             }
         }
     }
 
+    // 上次持久化时的消息数量，用于跳过无新消息时的重复写入
+    private int lastPersistedSize = -1;
+
     /**
      * 将当前 messageList 全量持久化到磁盘。
      * <p>
      * 在每步执行后、Agent 完成/出错时调用，确保对话进度不丢失。
+     * 如果消息数量自上次写入以来没有变化，跳过本次写入以减少磁盘 I/O。
      */
     public void persistMessages() {
         if (chatMemory == null || sessionId == null || sessionId.isBlank()) {
             return;
         }
+        int currentSize = messageList.size();
+        if (currentSize == lastPersistedSize) {
+            return; // 无新消息，跳过
+        }
         try {
             chatMemory.save(sessionId, messageList);
+            lastPersistedSize = currentSize;
             // 通知外部更新会话元数据（标题、消息数等）
             if (onPersistCallback != null) {
                 onPersistCallback.run();

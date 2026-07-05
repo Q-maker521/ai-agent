@@ -306,4 +306,122 @@ public class AiController {
         result.put("updated", true);
         return result;
     }
+
+    /**
+     * [调试/修复] 扫描持久化目录，修复常见问题：
+     * <ul>
+     *   <li>孤儿 .tmp 文件 → 恢复为 .json</li>
+     *   <li>幽灵 .meta.json（无对应数据文件）→ 删除</li>
+     *   <li>旧 .kryo 文件 → 触发迁移</li>
+     *   <li>.meta.json 中 messageCount 不准确 → 修正</li>
+     * </ul>
+     */
+    @PostMapping("/agent/sessions/repair")
+    public java.util.Map<String, Object> repairSessions() {
+        java.util.Map<String, Object> report = new java.util.LinkedHashMap<>();
+        java.util.List<String> actions = new java.util.ArrayList<>();
+        int orphanTmpRecovered = 0;
+        int ghostMetaDeleted = 0;
+        int kryoMigrated = 0;
+        int metaRepaired = 0;
+
+        java.io.File dir = new java.io.File(System.getProperty("user.dir"), "tmp/agent-memory");
+
+        // 1. 恢复孤儿 .json.tmp 文件
+        java.io.File[] tmpFiles = dir.listFiles((d, n) -> n.endsWith(".json.tmp"));
+        if (tmpFiles != null) {
+            for (java.io.File tmp : tmpFiles) {
+                String id = tmp.getName().replace(".json.tmp", "");
+                java.io.File jsonFile = new java.io.File(dir, id + ".json");
+                if (!jsonFile.exists() && tmp.length() > 0) {
+                    if (tmp.renameTo(jsonFile)) {
+                        orphanTmpRecovered++;
+                        actions.add("Recovered orphan .tmp → .json: " + id);
+                    }
+                } else if (jsonFile.exists()) {
+                    tmp.delete(); // .json already exists, tmp is stale
+                    actions.add("Deleted stale .tmp: " + id);
+                }
+            }
+        }
+
+        // 2. 迁移旧 .kryo 文件
+        java.io.File[] kryoFiles = dir.listFiles((d, n) -> n.endsWith(".kryo"));
+        if (kryoFiles != null) {
+            for (java.io.File kryo : kryoFiles) {
+                String id = kryo.getName().replace(".kryo", "");
+                java.io.File jsonFile = new java.io.File(dir, id + ".json");
+                if (!jsonFile.exists()) {
+                    try {
+                        var chatMemory = new com.aiagent.chatmemory.FileBasedChatMemory(
+                                dir.getAbsolutePath());
+                        var messages = chatMemory.get(id);
+                        if (messages != null && !messages.isEmpty()) {
+                            kryoMigrated++;
+                            actions.add("Migrated Kryo → JSON: " + id
+                                    + " (" + messages.size() + " messages)");
+                        }
+                    } catch (Exception e) {
+                        actions.add("Failed to migrate: " + id + " — " + e.getMessage());
+                    }
+                }
+            }
+        }
+
+        // 3. 清理幽灵 .meta.json
+        java.io.File[] metaFiles = dir.listFiles((d, n) -> n.endsWith(".meta.json"));
+        if (metaFiles != null) {
+            for (java.io.File meta : metaFiles) {
+                String id = meta.getName().replace(".meta.json", "");
+                java.io.File jsonFile = new java.io.File(dir, id + ".json");
+                java.io.File kryoFile = new java.io.File(dir, id + ".kryo");
+                if (!jsonFile.exists() && !kryoFile.exists()) {
+                    meta.delete();
+                    ghostMetaDeleted++;
+                    actions.add("Deleted ghost meta: " + id);
+                }
+            }
+        }
+
+        // 4. 修复 meta 中不准确的 messageCount
+        if (metaFiles != null) {
+            for (java.io.File meta : metaFiles) {
+                String id = meta.getName().replace(".meta.json", "");
+                java.io.File jsonFile = new java.io.File(dir, id + ".json");
+                java.io.File kryoFile = new java.io.File(dir, id + ".kryo");
+                if (jsonFile.exists() || kryoFile.exists()) {
+                    try {
+                        var chatMemory = new com.aiagent.chatmemory.FileBasedChatMemory(
+                                dir.getAbsolutePath());
+                        var messages = chatMemory.get(id);
+                        int actualCount = messages.size();
+                        // 读取 meta 比较
+                        com.fasterxml.jackson.databind.ObjectMapper mapper =
+                                new com.fasterxml.jackson.databind.ObjectMapper();
+                        var metaMap = mapper.readValue(meta, java.util.Map.class);
+                        int recordedCount = metaMap.get("messageCount") instanceof Integer
+                                ? (int) metaMap.get("messageCount") : -1;
+                        if (recordedCount != actualCount) {
+                            // 直接更新 meta 中的 messageCount
+                            metaMap.put("messageCount", actualCount);
+                            metaMap.put("lastAccessedAt", System.currentTimeMillis());
+                            mapper.writeValue(meta, metaMap);
+                            metaRepaired++;
+                            actions.add("Repaired meta: " + id
+                                    + " (messageCount " + recordedCount + " → " + actualCount + ")");
+                        }
+                    } catch (Exception e) {
+                        actions.add("Failed to repair meta: " + id + " — " + e.getMessage());
+                    }
+                }
+            }
+        }
+
+        report.put("orphanTmpRecovered", orphanTmpRecovered);
+        report.put("kryoMigrated", kryoMigrated);
+        report.put("ghostMetaDeleted", ghostMetaDeleted);
+        report.put("metaRepaired", metaRepaired);
+        report.put("actions", actions);
+        return report;
+    }
 }

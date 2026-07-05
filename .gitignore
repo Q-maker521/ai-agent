@@ -10,6 +10,9 @@ tmp
 # 工作文档（本地开发记录）
 WORKING_DOC.md
 项目问题回顾与解决方案.md
+# Python 缓存 & 测试脚本
+__pycache__/
+real_test.py
 
 HELP.md
 target/

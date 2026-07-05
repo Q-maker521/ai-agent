@@ -11,7 +11,6 @@
         <span class="badge">ReAct 模式</span>
         <span v-if="sessionId" class="session-badge" :title="'会话: ' + sessionId">
           💬 {{ sessionId.substring(0, 8) }}
-          <span v-if="sessionSource === 'disk'" class="source-tag">磁盘恢复</span>
         </span>
       </div>
       <div class="header-actions">
@@ -116,7 +115,6 @@ const agentEvents = ref([])
 const connectionStatus = ref('disconnected')
 const showChain = ref(true)
 const sessionId = ref('')
-const sessionSource = ref('')  // 'memory' | 'disk' | 'none'
 const historyLoaded = ref(false)
 const sessionList = ref([])  // 会话列表
 const showSidebar = ref(true)
@@ -133,7 +131,6 @@ const loadSessionHistory = async () => {
   try {
     const ctx = await getSessionContext(sessionId.value)
     if (ctx.messageCount > 0 && ctx.messages.length > 0) {
-      sessionSource.value = ctx.source || 'memory'
       // 将后端消息格式转为前端聊天消息
       for (const msg of ctx.messages) {
         const typeName = msg.type
@@ -147,9 +144,6 @@ const loadSessionHistory = async () => {
           addMessage(text, false, 'ai-final')
         }
         // TOOL 和 SYSTEM 类型不显示在聊天面板
-      }
-      if (ctx.messageCount > 0) {
-        addMessage(`— 已恢复 ${ctx.messageCount} 条历史消息 (${sessionSource.value === 'disk' ? '磁盘' : '内存'}) —`, false, 'ai-system')
       }
     }
     historyLoaded.value = true
@@ -165,7 +159,6 @@ const newConversation = () => {
   agentEvents.value = []
   connectionStatus.value = 'disconnected'
   sessionId.value = 'agent_' + Math.random().toString(36).substring(2, 10)
-  sessionSource.value = ''
   historyLoaded.value = false
   localStorage.removeItem('aiagent_session_id')
   addMessage('你好，我是 AI 智能助手。我可以搜索网页、读写文件、执行终端命令、爬取内容、生成 PDF 报告。请告诉我你需要完成什么任务？', false)
@@ -305,7 +298,6 @@ const switchSession = async (sid) => {
   agentEvents.value = []
   connectionStatus.value = 'disconnected'
   sessionId.value = sid
-  sessionSource.value = ''
   historyLoaded.value = false
   localStorage.setItem('aiagent_session_id', sid)
   await loadSessionHistory()
@@ -402,12 +394,6 @@ onBeforeUnmount(() => {
   padding: 2px 8px; border-radius: 8px;
   font-family: monospace;
   display: flex; align-items: center; gap: 4px;
-}
-.source-tag {
-  font-size: 0.6rem; color: #b45309;
-  background: #fef3c7;
-  padding: 1px 5px; border-radius: 4px;
-  font-family: inherit;
 }
 
 /* ===== 内容区 ===== */
