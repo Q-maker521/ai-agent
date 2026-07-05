@@ -66,6 +66,7 @@
 import { ref, watch, nextTick, onMounted, inject } from 'vue'
 import AiAvatarFallback from './AiAvatarFallback.vue'
 import { marked } from 'marked'
+import { markedHighlight } from 'marked-highlight'
 import hljs from 'highlight.js/lib/core'
 import javascript from 'highlight.js/lib/languages/javascript'
 import json from 'highlight.js/lib/languages/json'
@@ -83,16 +84,16 @@ hljs.registerLanguage('java', java)
 hljs.registerLanguage('xml', xml)
 hljs.registerLanguage('html', xml)
 
-marked.setOptions({
-  breaks: true,
-  gfm: true,
+marked.use(markedHighlight({
+  langPrefix: 'hljs language-',
   highlight(code, lang) {
     if (lang && hljs.getLanguage(lang)) {
       return hljs.highlight(code, { language: lang }).value
     }
     return hljs.highlightAuto(code).value
   }
-})
+}))
+marked.use({ breaks: true, gfm: true })
 
 const props = defineProps({
   messages: { type: Array, default: () => [] },

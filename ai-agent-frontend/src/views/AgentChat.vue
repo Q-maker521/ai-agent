@@ -1,22 +1,25 @@
 <template>
   <div class="agent-chat">
     <!-- 顶栏 -->
-    <header class="header">
-      <button class="back-btn" @click="goBack">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-        返回
-      </button>
-      <div class="header-center">
-        <h1>Agent 智能助手</h1>
-        <span class="badge">ReAct 模式</span>
-        <span v-if="sessionId" class="session-badge" :title="'会话: ' + sessionId">
-          💬 {{ sessionId.substring(0, 8) }}
-        </span>
-      </div>
-      <div class="header-actions">
-        <button class="toggle-btn" @click="showChain = !showChain">
-          {{ showChain ? '隐藏' : '显示' }}思考链
+    <header class="header glass-strong">
+      <div class="header-left">
+        <button class="icon-btn" @click="showSidebar = !showSidebar" title="侧边栏">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
         </button>
+        <h1>Agent 智能助手</h1>
+        <span v-if="stepsCount > 0" class="step-chip">第 {{ stepsCount }} 步</span>
+      </div>
+      <div class="header-right">
+        <button class="icon-btn" :class="{ active: showChain }" @click="showChain = !showChain" title="思考链">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/>
+            <polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/>
+            <line x1="4" y1="4" x2="9" y2="9"/>
+          </svg>
+        </button>
+        <span v-if="showChain && stepsCount" class="step-badge-icon">{{ stepsCount }}</span>
       </div>
     </header>
 
@@ -65,10 +68,21 @@
         </aside>
       </transition>
 
-      <!-- 侧边栏展开按钮（收起后显示） -->
-      <button v-if="!showSidebar" class="show-sidebar-btn" @click="showSidebar = true" title="展开侧边栏">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
-      </button>
+      <!-- 侧边栏收起态 — 图标条 -->
+      <div v-if="!showSidebar" class="sidebar-mini" @mouseenter="showSidebar = true">
+        <div class="mini-sessions">
+          <div
+            v-for="s in sessionList.slice(0, 8)"
+            :key="s.sessionId"
+            class="mini-avatar"
+            :class="{ active: s.sessionId === sessionId }"
+            :title="s.title"
+          >{{ s.title.charAt(0) }}</div>
+        </div>
+        <button class="mini-new" @click.stop="newConversation" title="新对话">+</button>
+      </div>
+
+      <div class="divider-soft" v-if="showSidebar"></div>
 
       <div class="main">
         <div class="chat-panel" :class="{ full: !showChain }">
@@ -81,6 +95,8 @@
           />
         </div>
 
+        <div class="divider-soft" v-if="showChain"></div>
+
         <transition name="slide">
           <div v-if="showChain" class="chain-panel">
             <ThinkingChain
@@ -91,16 +107,18 @@
         </transition>
       </div>
     </div>
+    <ShortcutPanel />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHead } from '@vueuse/head'
 import ChatRoom from '../components/ChatRoom.vue'
 import ThinkingChain from '../components/ThinkingChain.vue'
 import { getSessionContext, listSessions, deleteSession as deleteSessionApi } from '../api/index.js'
+import ShortcutPanel from '../components/ShortcutPanel.vue'
 
 useHead({
   title: 'Agent 智能助手 — ReAct 自主规划',
@@ -119,6 +137,7 @@ const sessionId = ref('')
 const historyLoaded = ref(false)
 const sessionList = ref([])  // 会话列表
 const showSidebar = ref(true)
+const stepsCount = computed(() => agentEvents.value.filter(e => e.type === 'step_start').length)
 let eventSource = null
 let streamingMsgIndex = -1  // 当前流式消息在 messages 中的索引（模块级，避免 TDZ）
 
@@ -358,43 +377,30 @@ onBeforeUnmount(() => {
 }
 
 .header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 20px;
-  background: var(--bg-primary);
+  height: 52px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px; flex-shrink: 0; z-index: 100;
   border-bottom: 1px solid var(--border-subtle);
-  flex-shrink: 0; z-index: 10;
-  box-shadow: var(--shadow-sm);
 }
-.header-center { display: flex; align-items: center; gap: 10px; }
-.header-center h1 {
-  font-size: 1rem; font-weight: 700;
-  color: var(--text-primary);
+.header-left, .header-right { display: flex; align-items: center; gap: 10px; }
+.header-left h1 { font-size: 0.95rem; font-weight: 700; color: var(--text-primary); }
+.header-right { position: relative; }
+.icon-btn {
+  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; color: var(--text-secondary);
+  border-radius: var(--radius-sm); cursor: pointer; transition: all 0.15s;
 }
-.badge {
-  font-size: 0.7rem; color: var(--accent);
-  background: var(--accent-light);
-  padding: 2px 10px; border-radius: 10px;
-  font-weight: 500;
+.icon-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.icon-btn.active { color: var(--accent); background: var(--accent-light); }
+.step-chip {
+  font-size: 0.7rem; font-weight: 500; color: var(--accent);
+  background: var(--accent-light); padding: 2px 10px; border-radius: var(--radius-full);
 }
-.back-btn, .toggle-btn {
-  display: flex; align-items: center; gap: 4px;
-  padding: 6px 14px; border-radius: var(--radius-sm);
-  font-size: 0.82rem; color: var(--text-secondary);
-  background: var(--bg-primary); border: 1px solid var(--border-subtle);
-  cursor: pointer; transition: all 0.2s;
-}
-.back-btn:hover, .toggle-btn:hover {
-  color: var(--accent); border-color: var(--accent-light);
-}
-.header-actions {
-  display: flex; align-items: center; gap: 8px;
-}
-.session-badge {
-  font-size: 0.68rem; color: var(--text-tertiary);
-  background: var(--bg-secondary);
-  padding: 2px 8px; border-radius: 8px;
-  font-family: monospace;
-  display: flex; align-items: center; gap: 4px;
+.step-badge-icon {
+  position: absolute; top: -2px; right: -4px;
+  min-width: 16px; height: 16px; border-radius: 8px;
+  background: var(--accent); color: #fff; font-size: 0.6rem;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 4px;
 }
 
 /* ===== 内容区 ===== */
@@ -486,15 +492,30 @@ onBeforeUnmount(() => {
 }
 .toggle-sidebar-btn:hover { background: var(--bg-secondary); color: var(--text-secondary); }
 
-/* 展开侧边栏按钮 */
-.show-sidebar-btn {
-  position: absolute; left: 0; top: 12px; z-index: 5;
-  padding: 8px 4px; border-radius: 0 6px 6px 0;
-  border: 1px solid var(--border-subtle); border-left: none;
-  background: var(--bg-primary); color: var(--text-secondary);
-  cursor: pointer; transition: all 0.15s;
+/* 侧边栏收起态 — 图标条 */
+.sidebar-mini {
+  width: 56px; flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 8px 0; background: var(--bg-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-right: 1px solid var(--border-subtle);
+  transition: all 0.25s var(--ease-out);
 }
-.show-sidebar-btn:hover { color: var(--accent); }
+.mini-sessions { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 0; overflow-y: auto; }
+.mini-avatar {
+  width: 36px; height: 36px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; font-weight: 700; color: var(--text-secondary);
+  background: var(--bg-secondary); cursor: pointer; transition: all 0.15s;
+}
+.mini-avatar:hover, .mini-avatar.active { background: var(--accent-light); color: var(--accent); }
+.mini-new {
+  width: 36px; height: 36px; border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-default); background: transparent;
+  color: var(--text-muted); font-size: 1.1rem; cursor: pointer;
+}
+.mini-new:hover { border-color: var(--accent); color: var(--accent); }
 
 /* 侧边栏动画 */
 .slide-sidebar-enter-active, .slide-sidebar-leave-active {
@@ -506,9 +527,8 @@ onBeforeUnmount(() => {
 .chat-panel { flex: 1; min-width: 0; transition: flex 0.3s; }
 .chat-panel.full { flex: 1; }
 .chain-panel {
-  width: 400px; flex-shrink: 0;
-  border-left: 1px solid var(--border-subtle);
-  overflow: hidden; background: var(--bg-primary);
+  width: 380px; flex-shrink: 0;
+  border-left: none; overflow: hidden; background: var(--bg-primary);
 }
 
 .slide-enter-active, .slide-leave-active { transition: width 0.3s, opacity 0.3s; overflow: hidden; }

@@ -45,20 +45,20 @@ const connectionStatus = ref('disconnected')
 const documents = ref([])
 let eventSource = null
 
-const addMessage = (content, isUser) => messages.value.push({ content, isUser, time: Date.now() })
+const addMessage = (content, isUser, type = '') => messages.value.push({ content, isUser, type, time: Date.now() })
 
 const sendMessage = (message) => {
   addMessage(message, true)
   if (eventSource) eventSource.close()
   const idx = messages.value.length
-  addMessage('', false)
+  addMessage('', false, 'ai-streaming')
   connectionStatus.value = 'connecting'
   const sessionId = localStorage.getItem('aiagent_session_id') || ''
   eventSource = chatWithRag(message, chatId.value, sessionId)
   eventSource.onmessage = (event) => {
     const data = event.data
     if (data && data !== '[DONE]' && idx < messages.value.length) messages.value[idx].content += data
-    if (data === '[DONE]') { connectionStatus.value = 'disconnected'; eventSource.close() }
+    if (data === '[DONE]') { connectionStatus.value = 'disconnected'; if (idx < messages.value.length) messages.value[idx].type = 'ai-final'; eventSource.close() }
   }
   eventSource.onerror = () => { connectionStatus.value = 'error'; eventSource.close() }
 }
@@ -82,7 +82,7 @@ onMounted(async () => {
       if (doc.summary) welcome += ' — ' + doc.summary
     }
   }
-  addMessage(welcome, false)
+  addMessage(welcome, false, 'ai-final')
 })
 
 onBeforeUnmount(() => { if (eventSource) eventSource.close() })
