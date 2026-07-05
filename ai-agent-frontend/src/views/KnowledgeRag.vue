@@ -91,7 +91,10 @@ onBeforeUnmount(() => { if (eventSource) eventSource.close() })
 .rag-view { display: flex; flex-direction: column; height: 100vh; background: var(--bg-secondary); }
 .header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 20px; background: var(--bg-primary);
+  padding: 10px 20px;
+  background: var(--bg-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0; box-shadow: var(--shadow-sm);
 }
