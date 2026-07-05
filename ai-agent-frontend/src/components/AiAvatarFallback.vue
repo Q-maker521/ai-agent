@@ -16,6 +16,12 @@ defineProps({ type: { type: String, default: 'agent' } })
   font-size: 0.75rem; font-weight: 700;
   border-radius: var(--radius-sm);
 }
-.rag { background: var(--accent-light); color: var(--accent); }
-.agent { background: var(--accent-light); color: var(--accent); }
+.rag {
+  background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+  color: #2e7d32;
+}
+.agent {
+  background: linear-gradient(135deg, var(--accent-light), rgba(0,113,227,0.15));
+  color: var(--accent);
+}
 </style>
