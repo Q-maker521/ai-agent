@@ -4,6 +4,7 @@ import com.aiagent.agent.DevAssistantAgent;
 import com.aiagent.app.KnowledgeBaseService;
 import com.aiagent.config.DynamicChatModelFactory;
 import com.aiagent.config.ModelConfig;
+import com.aiagent.rag.DocumentUploadService;
 import com.aiagent.rag.KnowledgeDocumentLoader;
 import com.aiagent.session.AgentSession;
 import com.aiagent.session.AgentSessionManager;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
@@ -50,14 +52,26 @@ public class AiController {
     private KnowledgeDocumentLoader documentLoader;
 
     @Resource
+    private DocumentUploadService documentUploadService;
+
+    @Resource
     private com.aiagent.agent.plan.SimplePlanner planner;
 
     /**
-     * 获取知识库文档目录（分类、标签、摘要）。
+     * 获取知识库文档目录（分类、标签、摘要），合并 classpath 文档和用户上传文档。
      */
     @GetMapping("/rag/documents")
     public java.util.List<java.util.Map<String, String>> getRagDocuments() {
-        return documentLoader.getDocumentCatalog();
+        java.util.List<java.util.Map<String, String>> catalog =
+                new java.util.ArrayList<>();
+        // classpath 文档
+        for (var item : documentLoader.getDocumentCatalog()) {
+            item.put("source", "classpath");
+            catalog.add(item);
+        }
+        // 用户上传文档
+        catalog.addAll(documentUploadService.getUserUploadedCatalog());
+        return catalog;
     }
 
     /**
@@ -116,6 +130,27 @@ public class AiController {
                     }
                 }, sseEmitter::completeWithError, sseEmitter::complete);
         return sseEmitter;
+    }
+
+    /**
+     * 上传文档到知识库 — 支持 PDF、Word、Markdown、TXT 等格式。
+     * <p>
+     * 文件经过解析 → 切分 → 关键词增强 → 向量化后加入知识库，
+     * 上传后立即可被 RAG 检索到。文件同时保存到 docs/user-uploads/ 以便重启恢复。
+     */
+    @PostMapping("/rag/documents/upload")
+    public java.util.Map<String, Object> uploadDocument(
+            @RequestParam("file") MultipartFile file) {
+        return documentUploadService.uploadDocument(file);
+    }
+
+    /**
+     * 删除用户上传的知识库文档（从向量库和磁盘中移除）。
+     */
+    @DeleteMapping("/rag/documents/{filename}")
+    public java.util.Map<String, Object> deleteDocument(
+            @PathVariable String filename) {
+        return documentUploadService.deleteDocument(filename);
     }
 
     /**

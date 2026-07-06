@@ -45,6 +45,9 @@ server:
   port: 8123
   servlet:
     context-path: /api
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
     encoding:
       charset: UTF-8
       enabled: true

@@ -48,7 +48,7 @@ public class SimplePlanner {
                 {
                   "summary": "一句话概括整体计划",
                   "steps": [
-                    {"number": 1, "goal": "该步要达成的目标", "toolHint": "可能用到的工具（web_search/web_scrape/file_write/generate_pdf等），不需要则填none", "successCriteria": "该步完成的判断标准"}
+                    {"number": 1, "goal": "该步要达成的目标", "toolHint": "可能用到的工具（web_search/web_scrape/file_write等），不需要则填none。generate_pdf/download_resource 仅在用户明确要求时才建议", "successCriteria": "该步完成的判断标准"}
                   ]
                 }
                 """.formatted(userTask);

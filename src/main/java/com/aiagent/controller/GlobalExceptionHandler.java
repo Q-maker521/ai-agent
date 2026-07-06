@@ -122,6 +122,92 @@ public class GlobalExceptionHandler {
                 .body(Map.of("error", e.getMessage(), "status", 409));
     }
 
+    // ========== 文件上传异常 ==========
+
+    /**
+     * 上传文件超过大小限制（默认 50MB）。
+     */
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleMaxUploadSize(
+            org.springframework.web.multipart.MaxUploadSizeExceededException e) {
+        log.warn("Upload size exceeded: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of(
+                        "error", "文件大小超过限制 (最大 50MB)",
+                        "status", 413));
+    }
+
+    /**
+     * 通用文件上传失败（格式错误、请求不完整等）。
+     */
+    @ExceptionHandler(org.springframework.web.multipart.MultipartException.class)
+    public ResponseEntity<Map<String, Object>> handleMultipart(
+            org.springframework.web.multipart.MultipartException e) {
+        log.warn("Multipart upload failed: {}", e.getMessage());
+        return ResponseEntity.badRequest()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of(
+                        "error", "文件上传失败: " + e.getMessage(),
+                        "status", 400));
+    }
+
+    // ========== AI Provider 调用异常 ==========
+
+    /**
+     * LLM API 调用失败（非瞬时性）：API Key 无效、模型不存在、参数错误等。
+     * <p>
+     * 返回 502 Bad Gateway + 原始错误信息，让用户知道具体原因（如模型名拼错、
+     * API Key 过期、额度不足等），而不是返回模糊的 "Internal server error"。
+     * 适用于所有 Provider：DashScope / OpenAI / Anthropic / OpenAI 兼容接口。
+     */
+    @ExceptionHandler(org.springframework.ai.retry.NonTransientAiException.class)
+    public ResponseEntity<Map<String, Object>> handleNonTransientAi(
+            org.springframework.ai.retry.NonTransientAiException e) {
+        // 提取最内层 root cause 的消息（通常是 Provider 返回的原始 JSON 错误）
+        String detail = extractRootMessage(e);
+        log.error("AI provider non-transient error: {}", detail);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "AI 模型调用失败: " + detail);
+        body.put("status", 502);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body);
+    }
+
+    /**
+     * LLM API 调用失败（瞬时性）：网络超时、服务暂时不可用、限流等。
+     * <p>
+     * 返回 503 Service Unavailable，提示用户稍后重试。
+     */
+    @ExceptionHandler(org.springframework.ai.retry.TransientAiException.class)
+    public ResponseEntity<Map<String, Object>> handleTransientAi(
+            org.springframework.ai.retry.TransientAiException e) {
+        String detail = extractRootMessage(e);
+        log.error("AI provider transient error: {}", detail);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "AI 服务暂时不可用: " + detail);
+        body.put("status", 503);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body);
+    }
+
+    /**
+     * 从异常链中提取根因消息。
+     * <p>
+     * 遍历 cause chain 找到最底层异常（通常是 Provider 返回的原始错误），
+     * 取其 message。如果异常链为空，回退到当前异常的 message。
+     */
+    private String extractRootMessage(Exception e) {
+        Throwable root = e;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        String msg = root.getMessage();
+        return msg != null && !msg.isBlank() ? msg : e.getMessage();
+    }
+
     // ========== 兜底 ==========
 
     /**

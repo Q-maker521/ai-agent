@@ -21,7 +21,7 @@
 - **并行工具调用** — 多工具并发执行（OpenAI/Anthropic），DashScope 自动降级为单工具模式
 - **7 个内置工具** — 网页搜索（Tavily API + Bing + DDG 多引擎聚合）、网页抓取（智能正文提取）、文件读写、终端命令、PDF 生成、资源下载
 - **多模型支持** — DashScope / OpenAI / Anthropic / OpenAI 兼容接口，前端 Settings 页面一键切换
-- **RAG 知识库** — 检索增强生成，含查询重写、关键词增强、向量相似度搜索
+- **RAG 知识库** — 检索增强生成，含查询重写、关键词增强、向量相似度搜索、**用户文档上传**（PDF/Word/Markdown/TXT 等，Tika 解析 + Token 切分 + 向量化）、重启自动恢复
 - **会话管理** — 跨请求对话连续性，JSON 持久化记忆，会话池 30min 自动过期 + 7 天磁盘 TTL + 20 个数量上限
 - **Esc 键即时停止** — 随时中断 Agent 执行，后端线程同步取消
 - **显式任务规划** — 复杂任务先出执行计划再行动
@@ -213,7 +213,9 @@ SearchAggregator
 | `/api/ai/agent/sessions/repair` | POST | [调试] 扫描修复持久化文件 |
 | `/api/ai/rag/chat/sync` | GET | RAG 知识库问答（同步） |
 | `/api/ai/rag/chat/sse` | GET | RAG 知识库问答（SSE 流式） |
-| `/api/ai/rag/documents` | GET | 知识库文档目录（分类、标签、摘要） |
+| `/api/ai/rag/documents` | GET | 知识库文档目录（classpath + 用户上传） |
+| `/api/ai/rag/documents/upload` | POST | 上传文档到知识库（multipart/form-data） |
+| `/api/ai/rag/documents/{filename}` | DELETE | 删除用户上传的文档 |
 | `/api/ai/config` | POST | 保存多模型配置 |
 | `/api/ai/config` | GET | 获取当前配置 |
 
@@ -334,11 +336,25 @@ SearchAggregator
 
 10. **Token 级流式 + 同步等待** — 内部使用 `Flux<ChatResponse>` 逐 token 推送 `thinking_delta`，外部 `blockLast()` 保持 Agent 循环同步语义不变。
 
+11. **DashScope OpenAI 兼容端点** — DashScope 原生 API 不支持 `qwen3.x` 新模型（返回 "url error"）。`DynamicChatModelFactory` 对 DashScope 使用 `OpenAiApi` 指向 `compatible-mode/v1` 端点，同时兼容新旧全部模型，对上层透明。
+
+12. **RAG 模块化架构** — 基于 Spring AI `RetrievalAugmentationAdvisor` 统一检索增强管道：`VectorStoreDocumentRetriever` 负责一次检索（`topK=5`, `similarityThreshold=0.4`），`ContextualQueryAugmenter` 处理检索结果增强，检索为空时注入兜底指令禁止 LLM 凭空编造。消除旧方案的双次向量查询。
+
+13. **RAG Advisor 链简化** — 从 `EmptyContextAdvisor` + `QuestionAnswerAdvisor`（各自独立检索，2 次向量查询）迁移到单一 `RetrievalAugmentationAdvisor`（1 次检索，内部流转）。代码量减少 ~100 行，为后续添加 `DocumentPostProcessor`（重排序/元数据过滤）奠定架构基础。
+
+14. **Prompt 控制权重归用户** — 全量审计 57 个文件中的 prompt / tool description / system message，消除 4 处诱导 LLM 自主生成 PDF 的漏洞链。核心原则：System Prompt 明确 5 条约束，LLM 仅执行用户明确要求的操作，不主动添加、保存、生成文件。
+
+15. **Tika 多格式文档解析** — 引入 `spring-ai-tika-document-reader` 依赖，支持 PDF / DOCX / PPTX / HTML / EPUB / TXT 等 15+ 格式。`.md` 文件走 MarkdownDocumentReader 保持 front-matter 兼容，其他格式统一走 TikaDocumentReader 自动检测并提取文本。
+
+16. **用户文档上传管线** — `DocumentUploadService` 完整处理：校验（类型白名单 + 50MB 限制）→ 存盘到 `docs/user-uploads/` → 解析 → TokenTextSplitter 切分（200 token/chunk）→ KeywordEnricher LLM 关键词增强 → `vectorStore.add()` 向量化 → `.index.json` 索引追踪。`@PostConstruct` 启动恢复确保重启不丢失。`synchronized` 保证线程安全。
+
+17. **文档管理侧边栏** — RAG 页面左侧 300px 侧边栏（对标 Agent 会话管理栏），支持展开/收起/拖拽上传/文件选择/删除文档，Toast 即时反馈操作结果。收起态显示 56px 图标条。
+
 ---
 
 ## 📚 详细文档
 
-- [WORKING_DOC.md](./WORKING_DOC.md) — 完整工作文档：架构详解、代码地图、API 接口、配置速查、调试技巧、全部 17 轮修复/增强记录
+- [WORKING_DOC.md](./WORKING_DOC.md) — 完整工作文档：架构详解、代码地图、API 接口、配置速查、调试技巧、全部 22 轮修复/增强记录
 - [项目问题回顾与解决方案.md](./项目问题回顾与解决方案.md) — 50+ 问题诊断与修复：根因分析、方案对比、经验总结
 
 ---

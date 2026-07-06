@@ -82,6 +82,11 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-markdown-document-reader</artifactId>
         </dependency>
+        <!-- Apache Tika 文档解析（PDF/DOCX/PPTX/HTML/TXT 等通用格式） -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-tika-document-reader</artifactId>
+        </dependency>
         <!-- 手动整合 PGVector 向量存储 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

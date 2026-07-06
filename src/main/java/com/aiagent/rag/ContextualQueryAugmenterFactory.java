@@ -4,19 +4,22 @@ import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.rag.generation.augmentation.ContextualQueryAugmenter;
 
 /**
- * 创建上下文查询增强器的工厂
+ * 创建上下文查询增强器的工厂。
+ * <p>
+ * 通过 {@code allowEmptyContext(false)} + 自定义 {@code emptyContextPromptTemplate}，
+ * 当向量库检索为空时强制 LLM 诚实告知而非凭空编造答案。
+ *
+ * @see RetrievalAugmentationAdvisor
  */
 public class ContextualQueryAugmenterFactory {
 
-    public static ContextualQueryAugmenter createInstance() {
-        PromptTemplate emptyContextPromptTemplate = new PromptTemplate("""
-                知识库中未找到与您问题相关的文档。请尝试：
-                1. 换一种方式描述您的问题
-                2. 使用更具体的关键词
-                3. 切换到 Agent 模式获取更广泛的信息检索帮助
-                """);
+    /**
+     * @param emptyContextMessage 检索为空时注入的兜底提示（会渲染为 PromptTemplate）
+     */
+    public static ContextualQueryAugmenter createInstance(String emptyContextMessage) {
+        PromptTemplate emptyContextPromptTemplate = new PromptTemplate(emptyContextMessage);
         return ContextualQueryAugmenter.builder()
-                .allowEmptyContext(false)
+                .allowEmptyContext(false)  // 不允许空上下文通过：注入兜底提示
                 .emptyContextPromptTemplate(emptyContextPromptTemplate)
                 .build();
     }

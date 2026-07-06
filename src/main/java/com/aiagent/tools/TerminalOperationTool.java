@@ -161,7 +161,7 @@ public class TerminalOperationTool {
             OUTPUT: Captures stdout and stderr. Output is truncated to 4000 characters.
             Process has a 30-second timeout.
 
-            TIP: Prefer dedicated tools (file_write, web_search, generate_pdf) over raw
+            TIP: Prefer dedicated tools (file_write, web_search, web_scrape) over raw
             terminal commands when a suitable tool exists.
             """)
     public String executeTerminalCommand(

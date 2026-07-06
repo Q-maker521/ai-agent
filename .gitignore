@@ -7,12 +7,19 @@
 application-local.yml
 tmp
 .claude/
+# 用户上传的知识库文档
+docs/user-uploads/
+# Claude 生成的开发文档
+docs/superpowers/
 # 工作文档（本地开发记录）
 WORKING_DOC.md
 项目问题回顾与解决方案.md
 # Python 缓存 & 测试脚本
 __pycache__/
 real_test.py
+# 个人学习 Demo 与测试脚本
+test_*.sh
+src/main/java/com/aiagent/demo/
 
 HELP.md
 target/

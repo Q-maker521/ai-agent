@@ -11,13 +11,13 @@ public class TerminateTool {
             Terminate the Agent session — call this when the task is complete.
 
             WHEN TO CALL (必须调用的时机):
-            1. All user-requested tasks have been completed successfully
-            2. The final answer has been given, PDF/file has been saved
-            3. You cannot proceed further and need to end the session
+            1. 所有用户要求的任务已完成
+            2. 最终回答已给出
+            3. 无法继续执行，需要结束会话
 
             DO NOT call this tool if:
-            - There are still pending tasks or sub-steps to complete
-            - The user asked a clarifying question that needs a response first
+            - 还有待完成的任务或子步骤
+            - 需要先回复用户的追问
 
             After calling doTerminate, the agent loop ends immediately. This should be
             the LAST tool you call in any session.

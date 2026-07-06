@@ -93,28 +93,36 @@ public class DynamicChatModelFactory {
                         .build();
             }
             default -> {
-                DashScopeApi api = DashScopeApi.builder().apiKey(config.apiKey()).build();
-                yield DashScopeChatModel.builder()
-                        .dashScopeApi(api)
-                        .defaultOptions(DashScopeChatOptions.builder()
-                                .withModel(config.modelName())
-                                .withInternalToolExecutionEnabled(false)
+                OpenAiApi api = OpenAiApi.builder()
+                        .apiKey(config.apiKey())
+                        .baseUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
+                        .build();
+                yield OpenAiChatModel.builder()
+                        .openAiApi(api)
+                        .defaultOptions(OpenAiChatOptions.builder()
+                                .model(config.modelName())
                                 .build())
                         .build();
             }
         };
     }
 
-    // ─────────── DashScope ───────────
+    // ─────────── DashScope（通过 OpenAI 兼容端点）───────────
+    //
+    // DashScope 原生 API (/api/v1/services/aigc/text-generation/generation)
+    // 不支持 qwen3.x 等新模型（返回 "url error"）。改用 OpenAI 兼容端点
+    // (https://dashscope.aliyuncs.com/compatible-mode/v1)，同时兼容新旧模型。
 
     private ProviderResult createDashScope(ModelConfig config) {
-        DashScopeApi api = DashScopeApi.builder().apiKey(config.apiKey()).build();
-        DashScopeChatOptions options = DashScopeChatOptions.builder()
-                .withModel(config.modelName())
-                .withInternalToolExecutionEnabled(false)
+        OpenAiApi api = OpenAiApi.builder()
+                .apiKey(config.apiKey())
+                .baseUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
                 .build();
-        DashScopeChatModel chatModel = DashScopeChatModel.builder()
-                .dashScopeApi(api).defaultOptions(options).build();
+        OpenAiChatOptions options = OpenAiChatOptions.builder()
+                .model(config.modelName())
+                .build();
+        OpenAiChatModel chatModel = OpenAiChatModel.builder()
+                .openAiApi(api).defaultOptions(options).build();
         ChatClient client = ChatClient.builder(chatModel)
                 .defaultAdvisors(new LoggingAdvisor(), new ReReadingAdvisor()).build();
         return new ProviderResult(client, options);

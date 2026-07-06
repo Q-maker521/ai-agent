@@ -57,6 +57,24 @@ export const getRagDocuments = async () => {
   return res.data
 }
 
+// 上传文档到知识库
+export const uploadRagDocument = async (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await request.post('/ai/rag/documents/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000  // 2 分钟超时（大文件 + embedding 耗时）
+  })
+  return res.data
+}
+
+// 删除已上传的知识库文档
+export const deleteRagDocument = async (filename) => {
+  const res = await request.delete(
+    `/ai/rag/documents/${encodeURIComponent(filename)}`)
+  return res.data
+}
+
 // AI 智能研发助手聊天（支持 sessionId 会话复用）
 export const chatWithAgent = (message, sessionId) => {
   const params = { message }
@@ -125,5 +143,8 @@ export default {
   listSessions,
   getSessionDetail,
   deleteSession,
-  updateSession
+  updateSession,
+  uploadRagDocument,
+  deleteRagDocument,
+  getRagDocuments
 }

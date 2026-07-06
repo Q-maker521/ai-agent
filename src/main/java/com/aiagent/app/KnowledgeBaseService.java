@@ -3,13 +3,12 @@ package com.aiagent.app;
 import com.aiagent.advisor.LoggingAdvisor;
 import com.aiagent.chatmemory.FileBasedChatMemory;
 import com.aiagent.rag.QueryRewriter;
+import com.aiagent.rag.RagCustomAdvisorFactory;
 import jakarta.annotation.Resource;
 import org.springframework.beans.factory.annotation.Autowired;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
-import org.springframework.ai.chat.client.advisor.api.Advisor;
-import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
@@ -38,6 +37,16 @@ public class KnowledgeBaseService {
             + "Answer questions based on retrieved context. When information comes from the knowledge base, cite the source document. "
             + "If the answer cannot be found in the available documents, honestly state that and suggest alternative approaches. "
             + "Maintain a professional, helpful tone and structure your answers clearly.";
+
+    /** RAG 检索相似度阈值 — 低于此值的文档不检索（DashScope Embedding 相似度分布 0.3-0.7） */
+    private static final double RAG_SIMILARITY_THRESHOLD = 0.4;
+    /** RAG 检索参数 — 每次检索返回的最大文档数 */
+    private static final int RAG_TOP_K = 5;
+    /** 检索结果为空时注入 system prompt 的兜底消息 */
+    private static final String EMPTY_CONTEXT_MESSAGE = "重要：知识库检索未找到与此问题相关的任何文档。"
+            + "你必须直接告诉用户'知识库中未找到相关信息'，不得基于你自己的训练数据回答此问题。"
+            + "同时建议用户：1) 换一种方式提问 2) 使用更具体的关键词 3) 切换到 Agent 模式。"
+            + "【禁止编造答案】";
 
     public KnowledgeBaseService(ChatModel dashscopeChatModel) {
         this.defaultChatModel = dashscopeChatModel;
@@ -110,7 +119,8 @@ public class KnowledgeBaseService {
                 .user(rewrittenMessage)
                 .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, chatId))
                 .advisors(new LoggingAdvisor())
-                .advisors(new QuestionAnswerAdvisor(vectorStore))
+                .advisors(RagCustomAdvisorFactory.createRagAdvisor(
+                        vectorStore, RAG_TOP_K, RAG_SIMILARITY_THRESHOLD, EMPTY_CONTEXT_MESSAGE))
                 .call()
                 .chatResponse();
         String content = chatResponse.getResult().getOutput().getText();
@@ -140,7 +150,8 @@ public class KnowledgeBaseService {
                 .user(rewrittenMessage)
                 .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, chatId))
                 .advisors(new LoggingAdvisor())
-                .advisors(new QuestionAnswerAdvisor(vectorStore))
+                .advisors(RagCustomAdvisorFactory.createRagAdvisor(
+                        vectorStore, RAG_TOP_K, RAG_SIMILARITY_THRESHOLD, EMPTY_CONTEXT_MESSAGE))
                 .stream()
                 .content();
     }

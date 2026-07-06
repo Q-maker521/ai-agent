@@ -210,6 +210,13 @@ public class ToolCallAgent extends ReActAgent {
                     })
                     .blockLast(); // 阻塞等待完整响应，保持 step() 同步语义
             this.toolCallChatResponse = chatResponse;
+            // 防御性检查：DashScope 等 Provider 在模型名无效 / API 异常时可能返回
+            // ChatResponse.getResult() == null，此时应抛出明确异常而非 NPE。
+            if (chatResponse == null || chatResponse.getResult() == null) {
+                throw new IllegalStateException(
+                        "LLM returned empty response — 模型可能不存在、API Key 无效或服务异常。"
+                        + "请检查 Settings 中的模型名称和 API Key 是否正确。");
+            }
             AssistantMessage assistantMessage = chatResponse.getResult().getOutput();
             List<AssistantMessage.ToolCall> toolCallList = assistantMessage.getToolCalls();
 
@@ -363,6 +370,9 @@ public class ToolCallAgent extends ReActAgent {
                         "LLM 调用失败 (" + e.getMessage() + ")，正在重试..."));
                 return false; // 跳过 act()，下一步 think() 通过 retryHint 获得错误上下文
             }
+            // 重试耗尽：设置 ERROR 状态终止循环，防止后续 step 空转
+            log.error("{} 重试耗尽 ({} 次)，终止执行", getName(), MAX_RETRIES);
+            setState(AgentState.ERROR);
             emitEvent(AgentEvent.agentError(getCurrentStep(),
                     "Think failed after " + MAX_RETRIES + " retries: " + e.getMessage()));
             return false;
