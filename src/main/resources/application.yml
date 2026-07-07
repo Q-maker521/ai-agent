@@ -4,24 +4,23 @@ spring:
   profiles:
     active: local
 #  datasource:
-#    url: xxx
-#    username: root
-#    password: 123456
+#    url: ${DB_URL:}
+#    username: ${DB_USERNAME:}
+#    password: ${DB_PASSWORD:}
   ai:
     dashscope:
-      # 需要替换为你自己的 key
+      # 建议通过环境变量注入真实 API Key
       api-key: ${DASHSCOPE_API_KEY:}
       chat:
         options:
           model: qwen-plus-latest
     openai:
-      # 前端用户自行填写 — 此处仅供自动配置不会异常
+      # 前端用户自行填写；此处使用 dummy 避免自动配置异常
       api-key: ${OPENAI_API_KEY:dummy}
     anthropic:
       api-key: ${ANTHROPIC_API_KEY:dummy}
     tavily:
-      # Tavily Search API — 专为 AI Agent 设计，邮箱注册即用
-      # 获取 key: https://tavily.com → 注册 → 免费 1000 次/月
+      # Tavily Search API，可选；未配置时会降级到 HTML 搜索引擎
       api-key: ${TAVILY_API_KEY:}
     ollama:
       base-url: http://localhost:11434
@@ -71,7 +70,7 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
-# 修改日志级别，查看 Spring AI 更多调用细节
+# 调试阶段保留 Spring AI 日志，生产环境可调整为 INFO
 logging:
   level:
     org.springframework.ai: DEBUG

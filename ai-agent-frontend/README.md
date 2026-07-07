@@ -1,55 +1,32 @@
-# AI智能体应用平台前端
+# AI Agent Engineering Platform Frontend
 
-这是一个基于Vue3开发的AI智能体应用平台，包含两个核心应用：AI恋爱大师和AI超级智能体。
+Vue 3 + Vite 前端应用，用于展示 Agent 对话、RAG 知识库问答、思考链可视化和多模型配置。
 
-## 功能特点
+## 功能
 
-- 💬 **AI恋爱大师**：智能情感顾问，为用户提供恋爱相关的建议和解答
-- 🤖 **AI超级智能体**：全能型AI助手，解决各类专业问题
+- Agent 流式对话
+- 思考链和工具调用过程展示
+- RAG 知识库文档管理
+- DashScope / OpenAI / Anthropic / OpenAI-Compatible 模型配置
+- Markdown 渲染、代码高亮和会话交互
 
-## 技术栈
-
-- Vue3
-- Vue Router
-- Axios
-- SSE (Server-Sent Events)
-
-## 开发说明
-
-### 环境要求
-
-- Node.js >= 16.0.0
-- npm >= 7.0.0
-
-### 安装依赖
+## 启动
 
 ```bash
 npm install
-```
-
-### 启动开发服务器
-
-```bash
 npm run dev
 ```
 
-### 构建项目
+默认开发地址：
+
+```text
+http://localhost:3000
+```
+
+## 构建
 
 ```bash
 npm run build
 ```
 
-## 后端接口
-
-项目依赖以下后端接口：
-
-- `/api/ai/love_app/chat/sse` - AI恋爱大师聊天接口
-- `/api/ai/manus/chat` - AI超级智能体聊天接口
-
-后端服务默认运行在 `http://localhost:8123`
-
-# Vue 3 + Vite
-
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
-
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+构建产物输出到 `dist/`，该目录不建议提交到仓库。

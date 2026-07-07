@@ -20,13 +20,13 @@ class PgVectorVectorStoreConfigTest {
     @Test
     void pgVectorVectorStore() {
         List<Document> documents = List.of(
-                new Document("鱼皮的编程导航有什么用？学编程啊，做项目啊", Map.of("meta1", "meta1")),
-                new Document("程序员鱼皮的原创项目教程 codefather.cn"),
-                new Document("鱼皮这小伙子比较帅气", Map.of("meta2", "meta2")));
+                new Document("AI Agent 项目可以用于学习工具调用、RAG 和工程化部署", Map.of("meta1", "meta1")),
+                new Document("Spring AI 可以帮助 Java 项目接入大模型、Embedding 和向量检索"),
+                new Document("ReAct 模式通过推理和行动循环提升复杂任务处理能力", Map.of("meta2", "meta2")));
         // 添加文档
         pgVectorVectorStore.add(documents);
         // 相似度查询
-        List<Document> results = pgVectorVectorStore.similaritySearch(SearchRequest.builder().query("怎么学编程啊").topK(3).build());
+        List<Document> results = pgVectorVectorStore.similaritySearch(SearchRequest.builder().query("怎么学习 AI Agent 工程化").topK(3).build());
         Assertions.assertNotNull(results);
     }
 }

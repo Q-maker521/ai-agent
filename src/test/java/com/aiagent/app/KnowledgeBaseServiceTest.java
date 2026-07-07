@@ -17,14 +17,14 @@ class KnowledgeBaseServiceTest {
     void testChat() {
         String chatId = UUID.randomUUID().toString();
         // 第一轮
-        String message = "你好，我是程序员鱼皮";
+        String message = "你好，我正在学习 AI Agent 工程化落地";
         String answer = knowledgeBaseService.doChat(message, chatId);
         // 第二轮
-        message = "我想让另一半（编程导航）更爱我";
+        message = "我想设计一个支持工具调用和知识库问答的智能体项目";
         answer = knowledgeBaseService.doChat(message, chatId);
         Assertions.assertNotNull(answer);
         // 第三轮
-        message = "我的另一半叫什么来着？刚跟你说过，帮我回忆一下";
+        message = "刚才我想做的项目方向是什么？帮我回忆一下";
         answer = knowledgeBaseService.doChat(message, chatId);
         Assertions.assertNotNull(answer);
     }
@@ -32,7 +32,7 @@ class KnowledgeBaseServiceTest {
     @Test
     void doChatWithReport() {
         String chatId = UUID.randomUUID().toString();
-        String message = "你好，我是程序员鱼皮，我想让另一半（编程导航）更爱我，但我不知道该怎么做";
+        String message = "你好，我想做一个可展示在简历上的 AI Agent 项目，请帮我拆解需求和实现路径";
         KnowledgeBaseService.ResearchSummary loveReport = knowledgeBaseService.doChatWithReport(message, chatId);
         Assertions.assertNotNull(loveReport);
     }
@@ -48,10 +48,10 @@ class KnowledgeBaseServiceTest {
     @Test
     void doChatWithTools() {
         // 测试联网搜索问题的答案
-        testMessage("周末想带女朋友去上海约会，推荐几个适合情侣的小众打卡地？");
+        testMessage("帮我搜索近期 AI Agent 工程化落地的常见技术方案，并给出简要对比。");
 
-        // 测试网页抓取：恋爱案例分析
-        testMessage("最近和对象吵架了，看看编程导航网站（codefather.cn）的其他情侣是怎么解决矛盾的？");
+        // 测试网页抓取：技术文章分析
+        testMessage("抓取 Spring AI 官方文档首页，并总结它适合构建 Agent 的能力。");
 
         // 测试资源下载：图片下载
         testMessage("直接下载一张适合做手机壁纸的星空情侣图片为文件");

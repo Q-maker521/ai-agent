@@ -8,7 +8,7 @@ class WebScrapingToolTest {
     @Test
     void scrapeWebPage() {
         WebScrapingTool webScrapingTool = new WebScrapingTool();
-        String url = "https://www.codefather.cn";
+        String url = "https://spring.io/projects/spring-ai";
         String result = webScrapingTool.scrapeWebPage(url);
         Assertions.assertNotNull(result);
     }
