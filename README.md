@@ -1,6 +1,6 @@
 # AI Agent Engineering Platform
 
-一个面向工程落地的 AI Agent 项目，基于 Spring Boot 3、Spring AI 和 Vue 3 构建，重点展示 ReAct Agent Loop、工具调用、RAG 知识库、多模型兼容、SSE 流式输出和思考链可视化。
+一个面向工程落地的 AI Agent 项目，基于 Spring Boot 3、Spring AI 和 Vue 3 构建，覆盖 ReAct Agent Loop、工具调用、RAG 知识库、多模型兼容、SSE 流式输出和思考链可视化。
 
 线上演示：http://8.139.5.187:8090/
 
