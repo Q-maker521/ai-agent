@@ -74,3 +74,14 @@ knife4j:
 logging:
   level:
     org.springframework.ai: DEBUG
+
+app:
+  default-chat:
+    # Optional production override. Keep secrets in environment variables.
+    provider: ${DEFAULT_CHAT_PROVIDER:}
+    api-key: ${DEFAULT_CHAT_API_KEY:}
+    model-name: ${DEFAULT_CHAT_MODEL:}
+    base-url: ${DEFAULT_CHAT_BASE_URL:}
+  rag:
+    # Set to false in production when the embedding provider is unavailable.
+    index-on-startup: ${RAG_INDEX_ON_STARTUP:true}

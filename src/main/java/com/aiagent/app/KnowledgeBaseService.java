@@ -2,6 +2,7 @@ package com.aiagent.app;
 
 import com.aiagent.advisor.LoggingAdvisor;
 import com.aiagent.chatmemory.FileBasedChatMemory;
+import com.aiagent.config.DefaultChatModelResolver;
 import com.aiagent.rag.QueryRewriter;
 import com.aiagent.rag.RagCustomAdvisorFactory;
 import jakarta.annotation.Resource;
@@ -48,15 +49,15 @@ public class KnowledgeBaseService {
             + "同时建议用户：1) 换一种方式提问 2) 使用更具体的关键词 3) 切换到 Agent 模式。"
             + "【禁止编造答案】";
 
-    public KnowledgeBaseService(ChatModel dashscopeChatModel) {
-        this.defaultChatModel = dashscopeChatModel;
+    public KnowledgeBaseService(DefaultChatModelResolver defaultChatModelResolver) {
+        this.defaultChatModel = defaultChatModelResolver.resolve();
         FileBasedChatMemory persistentMemory = new FileBasedChatMemory(
                 System.getProperty("user.dir") + "/tmp/rag-memory");
         MessageWindowChatMemory chatMemory = MessageWindowChatMemory.builder()
                 .chatMemoryRepository(persistentMemory)
                 .maxMessages(20)
                 .build();
-        defaultChatClient = ChatClient.builder(dashscopeChatModel)
+        defaultChatClient = ChatClient.builder(this.defaultChatModel)
                 .defaultSystem(SYSTEM_PROMPT)
                 .defaultAdvisors(
                         MessageChatMemoryAdvisor.builder(chatMemory).build(),

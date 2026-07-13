@@ -6,6 +6,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.SimpleVectorStore;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -31,9 +32,16 @@ public class VectorStoreConfig {
     @Resource
     private KeywordEnricher keywordEnricher;
 
+    @Value("${app.rag.index-on-startup:true}")
+    private boolean indexOnStartup;
+
     @Bean
     VectorStore vectorStore(EmbeddingModel dashscopeEmbeddingModel) {
         SimpleVectorStore simpleVectorStore = SimpleVectorStore.builder(dashscopeEmbeddingModel).build();
+        if (!indexOnStartup) {
+            log.warn("Vector store startup indexing is disabled. RAG retrieval will use an empty vector store.");
+            return simpleVectorStore;
+        }
         try {
             List<Document> documentList = knowledgeDocumentLoader.loadMarkdowns();
             List<Document> enrichedDocuments = keywordEnricher.enrichDocuments(documentList);

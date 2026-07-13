@@ -1,5 +1,6 @@
 package com.aiagent.rag;
 
+import com.aiagent.config.DefaultChatModelResolver;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.rag.Query;
@@ -16,8 +17,8 @@ public class QueryRewriter {
     private final QueryTransformer defaultQueryTransformer;
     private final ChatClient.Builder defaultChatClientBuilder;
 
-    public QueryRewriter(ChatModel dashscopeChatModel) {
-        this.defaultChatClientBuilder = ChatClient.builder(dashscopeChatModel);
+    public QueryRewriter(DefaultChatModelResolver defaultChatModelResolver) {
+        this.defaultChatClientBuilder = ChatClient.builder(defaultChatModelResolver.resolve());
         this.defaultQueryTransformer = RewriteQueryTransformer.builder()
                 .chatClientBuilder(defaultChatClientBuilder)
                 .build();
