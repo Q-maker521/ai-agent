@@ -85,7 +85,7 @@
         </div>
         <div class="card-arrow">→</div>
         <div class="card-hint" @click.stop="navigateTo('/knowledge-rag'); /* 后续通过 query 传参 */">
-          💡 试试: "帮我分析今天 AI 领域的重大新闻"
+          💡 试试: "根据我上传的项目文档，总结系统架构并标出依据来源"
         </div>
       </div>
     </section>
