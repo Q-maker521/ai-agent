@@ -12,6 +12,41 @@
       </div>
     </nav>
 
+    <transition name="modal-fade">
+      <div v-if="showApiKeyNotice" class="modal-backdrop" @click.self="dismissApiKeyNotice">
+        <div class="api-key-modal" role="dialog" aria-modal="true" aria-labelledby="api-key-modal-title">
+          <button class="modal-close" @click="dismissApiKeyNotice" title="关闭">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+          <div class="modal-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </div>
+          <h2 id="api-key-modal-title">使用前请先设置 API Key</h2>
+          <p>
+            Agent 和 RAG 问答需要调用大模型接口。请先在设置页填写你的 Provider、模型名称和 API Key，
+            保存成功后再开始体验。
+          </p>
+          <div class="modal-tips">
+            <span>支持 DashScope</span>
+            <span>OpenAI 兼容接口</span>
+            <span>本地仅保存到当前会话</span>
+          </div>
+          <div class="modal-actions">
+            <button class="btn-primary modal-primary" @click="goToSettings">
+              去设置 API Key <span class="arrow">→</span>
+            </button>
+            <button class="btn-secondary modal-secondary" @click="dismissApiKeyNotice">
+              稍后再说
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <!-- Hero -->
     <section class="hero">
       <h1 class="hero-title animate-in" style="animation-delay: 0ms">
@@ -123,10 +158,16 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHead } from '@vueuse/head'
+import { getConfig } from '../api'
 
 // ── Count-up animation ──
 const toolCount = ref(0)
 const stepCount = ref(0)
+const showApiKeyNotice = ref(false)
+const configReady = ref(false)
+
+const CONFIG_STORAGE_KEY = 'aiagent_config'
+const NOTICE_DISMISS_KEY = 'aiagent_api_key_notice_dismissed'
 
 function animateCount(refVar, target, duration = 600) {
   const start = performance.now()
@@ -139,9 +180,13 @@ function animateCount(refVar, target, duration = 600) {
   requestAnimationFrame(tick)
 }
 
-onMounted(() => {
+onMounted(async () => {
   animateCount(toolCount, 7)
   setTimeout(() => animateCount(stepCount, 20), 200)
+  await refreshConfigStatus()
+  if (!configReady.value && localStorage.getItem(NOTICE_DISMISS_KEY) !== 'true') {
+    showApiKeyNotice.value = true
+  }
 })
 
 useHead({
@@ -153,7 +198,57 @@ useHead({
 })
 
 const router = useRouter()
-const navigateTo = (path) => router.push(path)
+
+async function refreshConfigStatus() {
+  const sessionId = localStorage.getItem('aiagent_session_id') || ''
+  const saved = localStorage.getItem(CONFIG_STORAGE_KEY)
+  let hasLocalKey = false
+  if (saved) {
+    try {
+      const config = JSON.parse(saved)
+      hasLocalKey = Boolean(config.apiKey && config.modelName)
+    } catch {}
+  }
+  if (!sessionId) {
+    configReady.value = false
+    return
+  }
+  if (hasLocalKey) {
+    configReady.value = true
+    return
+  }
+  try {
+    const cfg = await getConfig(sessionId)
+    configReady.value = Boolean(cfg.configured)
+  } catch {
+    configReady.value = false
+  }
+}
+
+function requiresConfig(path) {
+  return path === '/agent-chat' || path === '/knowledge-rag'
+}
+
+const navigateTo = async (path) => {
+  if (requiresConfig(path)) {
+    await refreshConfigStatus()
+    if (!configReady.value) {
+      showApiKeyNotice.value = true
+      return
+    }
+  }
+  router.push(path)
+}
+
+function goToSettings() {
+  showApiKeyNotice.value = false
+  router.push('/settings')
+}
+
+function dismissApiKeyNotice() {
+  localStorage.setItem(NOTICE_DISMISS_KEY, 'true')
+  showApiKeyNotice.value = false
+}
 </script>
 
 <style scoped>
@@ -188,6 +283,70 @@ const navigateTo = (path) => router.push(path)
   background: none; border: none;
   display: inline-flex; align-items: center; gap: 5px;
   cursor: pointer; font-family: var(--font-ui);
+}
+
+/* API Key modal */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: rgba(29, 29, 31, 0.28);
+  backdrop-filter: blur(10px);
+}
+.api-key-modal {
+  position: relative;
+  width: min(480px, 100%);
+  padding: 32px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.16);
+}
+.modal-close {
+  position: absolute; top: 14px; right: 14px;
+  width: 34px; height: 34px;
+  border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-muted);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.15s;
+}
+.modal-close:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.modal-icon {
+  width: 54px; height: 54px; border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent); background: var(--accent-light);
+  margin-bottom: 18px;
+}
+.api-key-modal h2 {
+  font-size: 1.35rem; line-height: 1.35;
+  color: var(--text-primary); margin-bottom: 10px;
+}
+.api-key-modal p {
+  font-size: 0.92rem; line-height: 1.75;
+  color: var(--text-secondary); margin-bottom: 16px;
+}
+.modal-tips {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 24px;
+}
+.modal-tips span {
+  font-size: 0.76rem; color: var(--text-secondary);
+  padding: 4px 10px; border-radius: 6px;
+  background: var(--bg-secondary);
+}
+.modal-actions {
+  display: flex; align-items: center; gap: 10px;
+}
+.modal-primary, .modal-secondary {
+  min-height: 42px;
+}
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity var(--duration-normal) var(--ease-out);
+}
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
 }
 
 /* Hero */
@@ -353,6 +512,8 @@ const navigateTo = (path) => router.push(path)
   .hero-stats { gap: 24px; }
   .card { padding: 20px 22px; }
   .card-arrow { display: none; }
+  .api-key-modal { padding: 26px 22px; }
+  .modal-actions { flex-direction: column; align-items: stretch; }
   .workflow-steps { flex-direction: column; align-items: center; }
   .wf-arrow { transform: rotate(90deg); margin: 0; }
 }
